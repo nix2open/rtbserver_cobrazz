@@ -30,6 +30,13 @@ namespace AdServer::Bidding
   {
     if (!parse_request_())
     {
+      if (bid_frontend_->stats().in())
+      {
+        const auto path = metrics_path();
+        const auto source = metrics_source();
+        bid_frontend_->stats()->add_endpoint_request(path, source);
+        bid_frontend_->stats()->add_endpoint_finished(path, source);
+      }
       finish_(false);
       return;
     }
@@ -329,6 +336,21 @@ namespace AdServer::Bidding
       response_writer_->write(code, response);
       response_writer_ = FCGI::BaseHttpResponseWriter_var();
       response_sent_ = true;
+
+      if (bid_frontend_->stats().in() &&
+        !timeout_interrupted_.load(std::memory_order_relaxed))
+      {
+        const auto path = metrics_path();
+        const auto source = metrics_source();
+        if (code == 200)
+        {
+          bid_frontend_->stats()->add_endpoint_bid_response(path, source);
+        }
+        else if (code == 204)
+        {
+          bid_frontend_->stats()->add_endpoint_nobid_response(path, source);
+        }
+      }
     }
   }
 

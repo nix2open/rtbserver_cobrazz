@@ -4,8 +4,46 @@
 
 #include <CampaignSvcs/CampaignCommons/CampaignTypes.hpp>
 
+#include <sstream>
+
 namespace
 {
+  std::string
+  normalize_endpoint_label_(std::string_view value) noexcept
+  {
+    if (value.empty())
+    {
+      return "unknown";
+    }
+
+    std::string result;
+    result.reserve(value.size());
+    for (const char ch : value)
+    {
+      if (ch == '"' || ch == '\\' || ch == '\n' || ch == '\r')
+      {
+        result += '_';
+      }
+      else
+      {
+        result += ch;
+      }
+    }
+    return result.empty() ? std::string("unknown") : result;
+  }
+
+  std::string
+  make_endpoint_metric_name_(
+    const char* metric,
+    std::string_view path,
+    std::string_view source) noexcept
+  {
+    std::ostringstream out;
+    out << metric << "{path=\"" << normalize_endpoint_label_(path)
+      << "\",source=\"" << normalize_endpoint_label_(source) << "\"}";
+    return out.str();
+  }
+
   const Generics::Values::Key BF_REQ_COUNT        = "rtb_request_total";
   const Generics::Values::Key BF_REQ_FINISHED     = "rtb_request_finished_total";
   const Generics::Values::Key BF_REQ_BIDS         = "rtb_request_bid_total";
@@ -232,6 +270,120 @@ namespace AdServer
     timeout_counters_[timeout_counter_index(Bidding::CellsKey::round_timeout(timeout))].fetch_add(
         1,
         std::memory_order_relaxed);
+  }
+
+  StatHolder::EndpointShard&
+  StatHolder::endpoint_shard_(std::string_view path, std::string_view source) noexcept
+  {
+    const std::size_t h1 = std::hash<std::string_view>{}(path);
+    const std::size_t h2 = std::hash<std::string_view>{}(source);
+    const std::size_t index =
+      (h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2))) % ENDPOINT_SHARDS_SIZE;
+    return endpoint_shards_[index];
+  }
+
+  StatHolder::EndpointFunnel&
+  StatHolder::endpoint_funnel_(
+    EndpointShard& shard,
+    std::string_view path,
+    std::string_view source) noexcept
+  {
+    EndpointKey key{
+      normalize_endpoint_label_(path),
+      normalize_endpoint_label_(source)};
+    return shard.counters[key];
+  }
+
+  void
+  StatHolder::add_endpoint_request(std::string_view path, std::string_view source) noexcept
+  {
+    auto& shard = endpoint_shard_(path, source);
+    std::lock_guard lock(shard.lock);
+    ++endpoint_funnel_(shard, path, source).requests;
+  }
+
+  void
+  StatHolder::add_endpoint_finished(std::string_view path, std::string_view source) noexcept
+  {
+    auto& shard = endpoint_shard_(path, source);
+    std::lock_guard lock(shard.lock);
+    ++endpoint_funnel_(shard, path, source).finished;
+  }
+
+  void
+  StatHolder::add_endpoint_timeout(std::string_view path, std::string_view source) noexcept
+  {
+    auto& shard = endpoint_shard_(path, source);
+    std::lock_guard lock(shard.lock);
+    ++endpoint_funnel_(shard, path, source).timeout;
+  }
+
+  void
+  StatHolder::add_endpoint_skip(std::string_view path, std::string_view source) noexcept
+  {
+    auto& shard = endpoint_shard_(path, source);
+    std::lock_guard lock(shard.lock);
+    ++endpoint_funnel_(shard, path, source).skip;
+  }
+
+  void
+  StatHolder::add_endpoint_bid_response(std::string_view path, std::string_view source) noexcept
+  {
+    auto& shard = endpoint_shard_(path, source);
+    std::lock_guard lock(shard.lock);
+    ++endpoint_funnel_(shard, path, source).bid_responses;
+  }
+
+  void
+  StatHolder::add_endpoint_nobid_response(std::string_view path, std::string_view source) noexcept
+  {
+    auto& shard = endpoint_shard_(path, source);
+    std::lock_guard lock(shard.lock);
+    ++endpoint_funnel_(shard, path, source).nobid_responses;
+  }
+
+  void
+  StatHolder::append_endpoint_metrics(
+    Generics::MetricsProvider::MetricArray& result) noexcept
+  {
+    EndpointFunnelMap merged;
+    for (auto& shard : endpoint_shards_)
+    {
+      std::lock_guard lock(shard.lock);
+      for (const auto& [key, funnel] : shard.counters)
+      {
+        auto& dst = merged[key];
+        dst.requests += funnel.requests;
+        dst.finished += funnel.finished;
+        dst.timeout += funnel.timeout;
+        dst.skip += funnel.skip;
+        dst.bid_responses += funnel.bid_responses;
+        dst.nobid_responses += funnel.nobid_responses;
+      }
+    }
+
+    result.reserve(result.size() + merged.size() * 6);
+    for (const auto& [key, funnel] : merged)
+    {
+      result.emplace_back(
+        make_endpoint_metric_name_("rtb_requests_total", key.path, key.source),
+        static_cast<long>(funnel.requests));
+      result.emplace_back(
+        make_endpoint_metric_name_("rtb_requests_finished_total", key.path, key.source),
+        static_cast<long>(funnel.finished));
+      result.emplace_back(
+        make_endpoint_metric_name_("rtb_requests_timeout_total", key.path, key.source),
+        static_cast<long>(funnel.timeout));
+      result.emplace_back(
+        make_endpoint_metric_name_("rtb_requests_skip_total", key.path, key.source),
+        static_cast<long>(funnel.skip));
+      result.emplace_back(
+        make_endpoint_metric_name_("rtb_bid_responses_total", key.path, key.source),
+        static_cast<long>(funnel.bid_responses));
+      result.emplace_back(
+        make_endpoint_metric_name_("rtb_nobid_responses_total", key.path, key.source),
+        static_cast<long>(funnel.nobid_responses));
+    }
   }
 
   void
@@ -504,6 +656,7 @@ namespace AdServer
       Generics::Values_var values = stats_->dump_stats();
       ValuesMetricWriter writer(result);
       values->enumerate_all(writer);
+      stats_->append_endpoint_metrics(result);
     }
     return result;
   }

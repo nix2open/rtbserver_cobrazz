@@ -5,6 +5,8 @@
 #include <atomic>
 #include <array>
 #include <mutex>
+#include <string>
+#include <string_view>
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <Generics/CompositeActiveObject.hpp>
 #include <Generics/MetricsProvider.hpp>
@@ -83,6 +85,28 @@ namespace AdServer
 
     void
     add_timeout(const Generics::Time& timeout) noexcept;
+
+    // Per path (/openrtb, /google, ...) + SSP source funnel for Prometheus.
+    void
+    add_endpoint_request(std::string_view path, std::string_view source) noexcept;
+
+    void
+    add_endpoint_finished(std::string_view path, std::string_view source) noexcept;
+
+    void
+    add_endpoint_timeout(std::string_view path, std::string_view source) noexcept;
+
+    void
+    add_endpoint_skip(std::string_view path, std::string_view source) noexcept;
+
+    void
+    add_endpoint_bid_response(std::string_view path, std::string_view source) noexcept;
+
+    void
+    add_endpoint_nobid_response(std::string_view path, std::string_view source) noexcept;
+
+    void
+    append_endpoint_metrics(Generics::MetricsProvider::MetricArray& result) noexcept;
 
     void
     add_selected_bid(unsigned long ccg_id) noexcept;
@@ -254,6 +278,61 @@ namespace AdServer
 
     std::array<SelectedBidsShard, SELECTED_BIDS_SHARDS_SIZE>
       selected_bids_shards_;
+
+    struct EndpointKey
+    {
+      std::string path;
+      std::string source;
+
+      bool
+      operator==(const EndpointKey& right) const noexcept
+      {
+        return path == right.path && source == right.source;
+      }
+    };
+
+    struct EndpointKeyHash
+    {
+      std::size_t
+      operator()(const EndpointKey& key) const noexcept
+      {
+        const std::size_t h1 = std::hash<std::string>{}(key.path);
+        const std::size_t h2 = std::hash<std::string>{}(key.source);
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+      }
+    };
+
+    struct EndpointFunnel
+    {
+      unsigned long requests = 0;
+      unsigned long finished = 0;
+      unsigned long timeout = 0;
+      unsigned long skip = 0;
+      unsigned long bid_responses = 0;
+      unsigned long nobid_responses = 0;
+    };
+
+    using EndpointFunnelMap =
+      boost::unordered_flat_map<EndpointKey, EndpointFunnel, EndpointKeyHash>;
+
+    struct EndpointShard
+    {
+      std::mutex lock;
+      EndpointFunnelMap counters;
+    };
+
+    static constexpr std::size_t ENDPOINT_SHARDS_SIZE = 16;
+
+    std::array<EndpointShard, ENDPOINT_SHARDS_SIZE> endpoint_shards_;
+
+    EndpointShard&
+    endpoint_shard_(std::string_view path, std::string_view source) noexcept;
+
+    EndpointFunnel&
+    endpoint_funnel_(
+      EndpointShard& shard,
+      std::string_view path,
+      std::string_view source) noexcept;
   };
 
   typedef ReferenceCounting::SmartPtr<StatHolder>

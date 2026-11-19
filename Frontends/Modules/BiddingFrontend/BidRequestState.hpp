@@ -58,6 +58,15 @@ namespace AdServer::Bidding
     const RequestInfo&
     request_info() const noexcept;
 
+    void
+    set_metrics_path(std::string_view path) noexcept;
+
+    std::string_view
+    metrics_path() const noexcept;
+
+    std::string
+    metrics_source() const noexcept;
+
     virtual std::string_view
     channel_keywords() const noexcept;
 
@@ -177,6 +186,7 @@ namespace AdServer::Bidding
     DebugSink debug_sink_;
     RequestTimeMetering request_time_metering_;
     AdServer::Commons::UserId resolved_user_id_;
+    std::string metrics_path_;
 
     mutable Generics::AtomicInt to_interrupt_;
     std::atomic<bool> timeout_interrupted_;
@@ -213,6 +223,33 @@ namespace AdServer::Bidding
   BidRequestState::request_info() const noexcept
   {
     return request_info_;
+  }
+
+  inline
+  void
+  BidRequestState::set_metrics_path(std::string_view path) noexcept
+  {
+    metrics_path_.assign(path.data(), path.size());
+  }
+
+  inline
+  std::string_view
+  BidRequestState::metrics_path() const noexcept
+  {
+    return metrics_path_.empty() ? std::string_view("unknown") : std::string_view(metrics_path_);
+  }
+
+  inline
+  std::string
+  BidRequestState::metrics_source() const noexcept
+  {
+    if (request_info_.source_id.empty())
+    {
+      return "unknown";
+    }
+    return std::string(
+      request_info_.source_id.data(),
+      request_info_.source_id.size());
   }
 
   inline

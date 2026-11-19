@@ -818,9 +818,11 @@ namespace AdServer::Bidding
       const FCGI::HttpRequest& request = request_holder->request();
       const RequestType request_type = resolve_request_type_(request);
       const Generics::Time request_timeout = get_request_timeout_(request);
+      const char* metrics_path = "/openrtb";
 
       if (request_type == RequestType::Google)
       {
+        metrics_path = "/google";
         request_task.reset(new GoogleBidRequestState(
           this,
           request_holder,
@@ -829,6 +831,7 @@ namespace AdServer::Bidding
       }
       else if (request_type == RequestType::Adfox)
       {
+        metrics_path = "/adfox";
         request_task.reset(new AdfoxHeaderBiddingRequestState(
           this,
           request_holder,
@@ -837,6 +840,7 @@ namespace AdServer::Bidding
       }
       else if (request_type == RequestType::AdXml)
       {
+        metrics_path = "/adxml";
         request_task.reset(new AdXmlBidRequestState(
           this,
           request_holder,
@@ -845,6 +849,7 @@ namespace AdServer::Bidding
       }
       else if (request_type == RequestType::ClickStar)
       {
+        metrics_path = "/directnative";
         request_task.reset(new ClickStarBidRequestState(
           this,
           request_holder,
@@ -853,6 +858,7 @@ namespace AdServer::Bidding
       }
       else if (request_type == RequestType::Dao)
       {
+        metrics_path = "/dao";
         request_task.reset(new AdJsonBidRequestState(
           this,
           request_holder,
@@ -868,6 +874,7 @@ namespace AdServer::Bidding
           start_process_time));
       }
 
+      request_task->set_metrics_path(metrics_path);
       request_task->init_debug_info();
 
       if (skip_by_process_coef(resolve_process_coef_(start_process_time)))
@@ -879,6 +886,10 @@ namespace AdServer::Bidding
         if (stats_.in())
         {
           stats_->add_skipped();
+          const auto path = request_task->metrics_path();
+          const auto source = request_task->metrics_source();
+          stats_->add_endpoint_request(path, source);
+          stats_->add_endpoint_skip(path, source);
         }
 
         return;
@@ -895,6 +906,10 @@ namespace AdServer::Bidding
         if (stats_.in())
         {
           stats_->add_skipped();
+          const auto path = request_task->metrics_path();
+          const auto source = request_task->metrics_source();
+          stats_->add_endpoint_request(path, source);
+          stats_->add_endpoint_skip(path, source);
         }
 
         request_task->write_interrupted_empty_response(String::SubString("MaxPendingTasks"));
@@ -1411,6 +1426,12 @@ namespace AdServer::Bidding
           campaign_match_result.get(),
           Generics::Time::get_time_of_day() -
             request_task->start_processing_time());
+        if (!request_task->interrupted())
+        {
+          stats_->add_endpoint_finished(
+            request_task->metrics_path(),
+            request_task->metrics_source());
+        }
         stats_flushed = true;
       }
     };
@@ -1419,6 +1440,13 @@ namespace AdServer::Bidding
       stats_.in(),
       &StatHolder::add_rtb_request,
       &StatHolder::complete_rtb_request);
+
+    if (stats_.in())
+    {
+      stats_->add_endpoint_request(
+        request_task->metrics_path(),
+        request_task->metrics_source());
+    }
 
     try
     {
@@ -2484,7 +2512,15 @@ namespace AdServer::Bidding
     Generics::Time timeout = Generics::Time::get_time_of_day() - request_task->start_processing_time();
     if (stats_.in())
     {
+      // Keep legacy aggregate timeout for Skipped; labeled funnel treats
+      // Skipped as skip-only (counted at the skip call site).
       stats_->add_timeout(timeout);
+      if (stage != Stage::Skipped)
+      {
+        stats_->add_endpoint_timeout(
+          request_task->metrics_path(),
+          request_task->metrics_source());
+      }
     }
 
     if (logger()->log_level() >= Logging::Logger::TRACE)

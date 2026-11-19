@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -291,6 +292,82 @@ namespace
     out << "}\n";
     return out.str();
   }
+
+  struct PrometheusMetricValueWriter : boost::static_visitor<>
+  {
+    explicit PrometheusMetricValueWriter(std::ostream& out) noexcept
+      : out(out)
+    {}
+
+    void operator()(double value) const
+    {
+      out << value;
+    }
+
+    void operator()(long value) const
+    {
+      out << value;
+    }
+
+    void operator()(const std::string&) const
+    {
+      // Prometheus exposition is numeric-only; skip string metrics.
+    }
+
+    std::ostream& out;
+  };
+
+  struct IsArithmeticMetric : boost::static_visitor<bool>
+  {
+    bool operator()(double) const { return true; }
+    bool operator()(long) const { return true; }
+    bool operator()(const std::string&) const { return false; }
+  };
+
+  std::string
+  prometheus_metric_base_name_(const std::string& name)
+  {
+    const auto brace = name.find('{');
+    if (brace == std::string::npos)
+    {
+      return name;
+    }
+    return name.substr(0, brace);
+  }
+
+  std::string
+  dump_metrics_prometheus(const Generics::CompositeMetricsProvider_var& metrics)
+  {
+    std::ostringstream out;
+    if (!metrics)
+    {
+      return out.str();
+    }
+
+    std::set<std::string> type_emitted;
+    for (const auto& metric : metrics->get_values())
+    {
+      if (metric.first.find("_last_error_") != std::string::npos)
+      {
+        continue;
+      }
+      if (!boost::apply_visitor(IsArithmeticMetric(), metric.second))
+      {
+        continue;
+      }
+
+      const std::string base = prometheus_metric_base_name_(metric.first);
+      if (type_emitted.insert(base).second)
+      {
+        out << "# TYPE " << base << " counter\n";
+      }
+      out << metric.first << ' ';
+      boost::apply_visitor(PrometheusMetricValueWriter(out), metric.second);
+      out << '\n';
+    }
+
+    return out.str();
+  }
 }
 
 namespace AdServer::Frontends
@@ -383,6 +460,17 @@ namespace AdServer::Frontends
                 200,
                 "application/json",
                 dump_stats_json(metrics)
+              });
+          });
+        http_server_->add_handler(
+          "/metrics",
+          [metrics](AdServer::Commons::HttpServer::HttpServer::Request)
+          {
+            return AdServer::Commons::HttpServer::make_ready_response(
+              AdServer::Commons::HttpServer::HttpServer::Response{
+                200,
+                "text/plain; version=0.0.4; charset=utf-8",
+                dump_metrics_prometheus(metrics)
               });
           });
 

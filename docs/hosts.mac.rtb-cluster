@@ -1,0 +1,152 @@
+##
+# Host Database (Mac)
+#
+# Source of cluster names: gateway (newgateway / 192.168.3.1) /etc/hosts
+# Snapshot date: 2026-11-17
+#
+# Apply:
+#   sudo cp /etc/hosts /etc/hosts.bak.$(date +%Y%m%d%H%M%S)
+#   sudo cp docs/hosts.mac.rtb-cluster /etc/hosts
+#   # or merge manually if you have unrelated local entries
+#
+# SSH examples after update:
+#   ssh -i ~/kk1 root@adfe205
+#   ssh -i ~/kk1 nikolay_fedorenko@dev02
+#   ssh -i ~/kk1 nikolay_fedorenko@gateway
+##
+
+127.0.0.1       localhost
+255.255.255.255 broadcasthost
+::1             localhost
+
+# --- RTB / Cobrazz cluster (from gateway) ---
+192.168.3.1     gateway
+192.168.3.2     adbe00
+192.168.3.13    adbe01
+192.168.3.3     adbe02
+192.168.3.19    adbe03
+192.168.3.32    adbe04
+192.168.3.33    adbe05
+192.168.3.34    adbe06
+192.168.3.4     postdb00
+192.168.3.70    postdb-stby00
+192.168.3.5     ui00
+192.168.3.78    ui01
+192.168.3.6     balancer02
+192.168.3.37    balancer01
+192.168.3.49    balancer03
+192.168.3.90    balancer04
+192.168.3.15    dev02
+192.168.3.22    dev03 genius-dev03 pharmatic-dev03
+192.168.3.12    adfe100
+192.168.3.8     adfe101
+192.168.3.9     adfe102
+192.168.3.27    adfe103
+192.168.3.28    adfe104
+192.168.3.35    adfe105
+192.168.3.38    adfe106
+192.168.3.40    adfe107
+192.168.3.44    adfe108
+192.168.3.43    adfe109
+192.168.3.52    adfe110
+192.168.3.7     adfe200
+192.168.3.10    adfe201
+192.168.3.11    adfe202
+192.168.3.29    adfe203
+192.168.3.30    adfe204
+192.168.3.36    adfe205
+192.168.3.39    adfe206
+192.168.3.42    adfe207
+192.168.3.45    adfe208
+192.168.3.51    adfe209
+192.168.3.58    adfe210
+192.168.3.59    adfe211
+192.168.3.14    stat00
+192.168.3.17    svn
+192.168.3.18    cms
+192.168.3.21    storage00
+192.168.3.31    storage01
+192.168.3.91    filestorage00
+192.168.3.24    bi00
+192.168.3.25    kafka01
+192.168.3.41    kafka02
+192.168.3.46    kafka03
+192.168.3.47    nvidia00
+192.168.3.50    nvidia01
+192.168.3.53    docker00
+192.168.3.69    dev05-ubuntu dev05-ubuntu-02
+192.168.3.55    dev06-ubuntu
+192.168.3.56    dev07-ubuntu
+192.168.3.57    proxmox-backup
+192.168.3.60    pve1
+192.168.3.61    bb
+192.168.3.62    grafana
+192.168.3.63    click00
+192.168.3.84    click01
+192.168.3.64    yuri01
+192.168.3.76    yuri00
+192.168.3.79    yuri01-virt
+192.168.3.80    yuri02-virt
+192.168.3.81    yuri03-virt
+192.168.3.71    windows10-yuri
+192.168.3.122   vpn00
+192.168.3.66    ubuntu-dev08 dev08
+192.168.3.67    ubuntu-dev09 ubuntu-dev09-02
+192.168.3.68    ubuntu-dev10
+192.168.3.72    dev14-oracle
+192.168.3.73    dev13-oracle
+192.168.3.74    dev12-oracle
+192.168.3.75    dev11-ubuntu dev11-ubuntu-02 dev11
+192.168.3.77    dev15-ubuntu
+192.168.3.83    ext-gw
+
+# --- ILO / management network (from gateway; optional) ---
+192.168.15.1    gatewayilo
+192.168.15.2    balancer02ilo
+192.168.15.3    adbe00ilo
+192.168.15.5    adbe02ilo
+192.168.15.6    postdb01ilo
+192.168.15.7    ui00ilo
+192.168.15.9    adfe101ilo
+192.168.15.10   adfe102ilo
+192.168.15.11   adfe201ilo
+192.168.15.13   adfe202ilo
+192.168.15.14   adfe200ilo
+192.168.15.15   dev02ilo
+192.168.15.20   adfe100ilo
+192.168.15.21   adbe01ilo
+192.168.15.22   stat00ilo
+192.168.15.23   adbe03ilo
+192.168.15.27   adfe103ilo
+192.168.15.28   adfe104ilo
+192.168.15.29   adfe203ilo
+192.168.15.30   adfe204ilo
+192.168.15.31   adbe04ilo
+192.168.15.32   adbe05ilo
+192.168.15.33   adbe06ilo
+192.168.15.34   adfe105ilo
+192.168.15.35   adfe205ilo
+192.168.15.36   balancer01ilo
+192.168.15.38   kafka03ilo
+192.168.15.39   kafka02ilo
+192.168.15.40   adfe109ilo
+192.168.15.41   adfe107ilo
+192.168.15.42   adfe207ilo
+192.168.15.43   adfe108ilo
+192.168.15.44   adfe208ilo
+192.168.15.45   adfe106ilo
+192.168.15.46   adfe206ilo
+192.168.15.47   nvidia00ilo
+192.168.15.48   balancer03ilo
+192.168.15.49   nvidia01ilo
+192.168.15.50   adfe110ilo
+192.168.15.51   adfe209ilo
+192.168.15.54   virt01ilo
+192.168.15.55   adfe211ilo
+192.168.15.56   adfe210ilo
+192.168.15.57   postdb00ilo
+192.168.15.58   virt00ilo
+192.168.15.59   click00ilo
+192.168.15.60   pmasterilo
+192.168.15.75   postdb-stby00ilo
+192.168.15.76   yuri00ilo

@@ -5,6 +5,11 @@
 These instructions apply to the entire repository. More specific `AGENTS.md` files may refine them
 for individual subdirectories.
 
+## Build and release (RTB / adfe)
+
+For building RPMs and deploying to DSP hosts, follow **`docs/RTB_RELEASE.md`** end-to-end.
+It is written so an agent can execute the release steps without further clarification.
+
 ## Source Style
 
 - Preserve the existing project style and do not reformat unrelated code.

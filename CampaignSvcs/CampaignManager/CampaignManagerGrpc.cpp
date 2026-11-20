@@ -880,6 +880,7 @@ namespace AdServer::CampaignSvcs
       }
 
       target.set_delivery_pacing(static_cast<unsigned char>(source.delivery_pacing));
+      target.set_spend_mode(static_cast<unsigned char>(source.spend_mode));
     }
 
     void

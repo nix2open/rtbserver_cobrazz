@@ -20,6 +20,10 @@ namespace AdServer::CampaignSvcs
     const char CAMPAIGN_RATE_OPTS_FILE[] = "CampaignRateOpts";
 
     const ImpRevenueDecimal UNLIMITED_IMPS(false, 1000000, 0);
+    // Even pacing: allow budget slightly ahead of ideal curve (confirm latency / traffic jitter).
+    const Generics::Time SPEND_PACING_LOOKAHEAD(Generics::Time::ONE_MINUTE * 15);
+    // After this fraction of open day, allow remaining daily budget (delivery catch-up).
+    const RevenueDecimal SPEND_PACING_ENDGAME_RATIO("0.85");
   };
 
   // BillingContainer::InternalConfig
@@ -89,6 +93,7 @@ namespace AdServer::CampaignSvcs
     {
       EntityType res;
       res.delivery_pacing = 'F';
+      res.spend_mode = 'A';
       res.active = false;
       // use zero offset if need confirm bid and entity isn't loaded
       res.time_offset = Generics::Time::ZERO;
@@ -115,8 +120,14 @@ namespace AdServer::CampaignSvcs
   class DeliveryLimitsChecker
   {
   public:
-    DeliveryLimitsChecker(const DeliveryLimitsType& delivery_limits, const Generics::Time& now)
-      : delivery_limits_(delivery_limits)
+    DeliveryLimitsChecker(
+      const DeliveryLimitsType& delivery_limits,
+      const Generics::Time& now,
+      bool enable_spend_pacing = false)
+      : delivery_limits_(delivery_limits),
+        now_(now),
+        remain_days_(RevenueDecimal::ZERO),
+        enable_spend_pacing_(enable_spend_pacing)
     {
       adv_tz_now_date_ = get_date_in_adv_tz(delivery_limits_, now);
 
@@ -329,26 +340,24 @@ namespace AdServer::CampaignSvcs
 
           if (delivery_limits_.delivery_pacing == 'F')
           {
-            // check fixed daily budget
+            // check fixed daily budget (+ optional Even paced cap)
             if (delivery_limits_.daily_budget.present())
             {
-              /*
-#             ifdef DEBUG_OUTPUT
-              std::cerr << "DeliveryLimitsChecker::check_(): today_amount = " << today_amount <<
-                ", daily_budget = " << *delivery_limits_.daily_budget << std::endl;
-#             endif
-              */
+              RevenueDecimal day_limit = *delivery_limits_.daily_budget;
+              RevenueDecimal paced_cap;
+              if (eval_paced_cap_(paced_cap, day_limit))
+              {
+                day_limit = std::min(day_limit, paced_cap);
+              }
 
-              if (today_amount >= *delivery_limits_.daily_budget)
+              if (today_amount >= day_limit)
               {
                 return false;
               }
 
               if (allowed_amount)
               {
-                *allowed_amount = std::min(
-                  *delivery_limits_.daily_budget - today_amount,
-                  *allowed_amount);
+                *allowed_amount = std::min(day_limit - today_amount, *allowed_amount);
               }
             }
           }
@@ -481,16 +490,22 @@ namespace AdServer::CampaignSvcs
                 UNLIMITED_IMPS;
             }
 
-            // check dynamic daily budget
+            // check dynamic daily budget (+ optional Even paced cap)
             if (delivery_limits_.delivery_pacing == 'D' &&
               delivery_limits_.date_end != Generics::Time::ZERO)
             {
-              const RevenueDecimal dynamic_daily_budget =
+              RevenueDecimal dynamic_daily_budget =
                 remain_days_ > RevenueDecimal::ZERO ?
                 RevenueDecimal::div(
                   *delivery_limits_.budget - total_amount + today_amount,
                   remain_days_) :
                 RevenueDecimal::ZERO;
+
+              RevenueDecimal paced_cap;
+              if (eval_paced_cap_(paced_cap, dynamic_daily_budget))
+              {
+                dynamic_daily_budget = std::min(dynamic_daily_budget, paced_cap);
+              }
 
 #             ifdef DEBUG_OUTPUT
               std::cerr << "DeliveryLimitsChecker::check_(): today_amount = " << today_amount <<
@@ -558,10 +573,73 @@ namespace AdServer::CampaignSvcs
       return true;
     }
 
+    // Cumulative ideal-spend cap for spend_mode == 'E'. Never exceeds today_budget.
+    // Curve is linear over the advertiser-local calendar day (date_start/end and
+    // weekly schedule already gate activity elsewhere).
+    bool
+    eval_paced_cap_(RevenueDecimal& paced_cap, const RevenueDecimal& today_budget) const
+      noexcept
+    {
+      try
+      {
+        if (!enable_spend_pacing_ ||
+          delivery_limits_.spend_mode != 'E' ||
+          today_budget <= RevenueDecimal::ZERO)
+        {
+          return false;
+        }
+
+        const Generics::Time adv_now = now_ + delivery_limits_.time_offset;
+        const Generics::Time open_start = adv_now.get_gm_time().get_date();
+        const long open_sec = Generics::Time::ONE_DAY.tv_sec;
+
+        long elapsed_sec = (adv_now - open_start).tv_sec;
+        if (elapsed_sec < 0)
+        {
+          elapsed_sec = 0;
+        }
+        if (elapsed_sec > open_sec)
+        {
+          elapsed_sec = open_sec;
+        }
+
+        const RevenueDecimal progress = RevenueDecimal::div(
+          RevenueDecimal(false, elapsed_sec, 0),
+          RevenueDecimal(false, open_sec, 0));
+        if (progress >= SPEND_PACING_ENDGAME_RATIO)
+        {
+          paced_cap = today_budget;
+          return true;
+        }
+
+        long paced_sec = elapsed_sec + SPEND_PACING_LOOKAHEAD.tv_sec;
+        if (paced_sec > open_sec)
+        {
+          paced_sec = open_sec;
+        }
+
+        paced_cap = RevenueDecimal::mul(
+          today_budget,
+          RevenueDecimal::div(
+            RevenueDecimal(false, paced_sec, 0),
+            RevenueDecimal(false, open_sec, 0)),
+          Generics::DMR_FLOOR);
+        return true;
+      }
+      catch(const RevenueDecimal::Overflow&)
+      {
+        // Fail open to daily budget (ASAP for this check), never invent a tighter cap.
+        paced_cap = today_budget;
+        return true;
+      }
+    }
+
   protected:
     const DeliveryLimitsType& delivery_limits_;
+    Generics::Time now_;
     Generics::Time adv_tz_now_date_;
     RevenueDecimal remain_days_;
+    bool enable_spend_pacing_;
   };
 
   namespace
@@ -624,12 +702,14 @@ namespace AdServer::CampaignSvcs
     Logging::Logger* logger,
     const String::SubString& storage_root,
     const Generics::Time& stat_delay,
-    unsigned long limits_divider)
+    unsigned long limits_divider,
+    bool enable_spend_pacing)
     /*throw(Exception)*/
     : logger_(ReferenceCounting::add_ref(logger)),
       storage_root_(storage_root.str()),
       stat_delay_(stat_delay),
       limit_coef_(RevenueDecimal::div(RevenueDecimal(1), RevenueDecimal(limits_divider))),
+      ENABLE_SPEND_PACING_(enable_spend_pacing),
       SAVE_PORTION_SIZE_(100),
       REPLACE_PORTION_SIZE_(100),
       SAVE_RATES_PORTION_SIZE_(10),
@@ -1373,7 +1453,8 @@ namespace AdServer::CampaignSvcs
     const Generics::Time& now)
     noexcept
   {
-    DeliveryLimitsChecker<DeliveryLimitsType> delivery_limits_checker(delivery_limits, now);
+    DeliveryLimitsChecker<DeliveryLimitsType> delivery_limits_checker(
+      delivery_limits, now, ENABLE_SPEND_PACING_);
 
     if (!delivery_limits_checker.check_required())
     {
@@ -1869,7 +1950,8 @@ namespace AdServer::CampaignSvcs
     ImpRevenueDecimal remind_confirm_imps = confirm_imps;
     ImpRevenueDecimal remind_confirm_clicks = confirm_clicks;
 
-    DeliveryLimitsChecker<DeliveryLimitsType> delivery_limits_checker(delivery_limits, now);
+    DeliveryLimitsChecker<DeliveryLimitsType> delivery_limits_checker(
+      delivery_limits, now, ENABLE_SPEND_PACING_);
 
     BillingContainerState::AmountHolder_var new_amount_holder =
       new BillingContainerState::AmountHolder();

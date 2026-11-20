@@ -108,6 +108,10 @@
       <xsl:if test="count($update-config/@max_stat_delay) = 0">604800</xsl:if>
     </xsl:attribute>
 
+    <xsl:attribute name="enable_spend_pacing"><xsl:value-of select="$update-config/@enable_spend_pacing"/>
+      <xsl:if test="count($update-config/@enable_spend_pacing) = 0">false</xsl:if>
+    </xsl:attribute>
+
     <cfg:CorbaConfig>
       <xsl:attribute name="threading-pool"><xsl:value-of select="$billing-server-config/cfg:threadParams/@min"/>
         <xsl:if test="count($billing-server-config/cfg:threadParams/@min) = 0">200</xsl:if>

@@ -332,6 +332,7 @@ namespace AdServer::CampaignSvcs
   typedef Generics::SimpleDecimal<uint64_t, 18, 8> CoordDecimal;
   typedef Generics::SimpleDecimal<uint64_t, 18, 8> AccuracyDecimal;
 
+  // spend_mode: 'A' = ASAP (default), 'E' = Even (intra-day paced spend)
   struct CampaignDeliveryLimits
   {
     bool operator==(const CampaignDeliveryLimits& right) const noexcept;
@@ -341,6 +342,7 @@ namespace AdServer::CampaignSvcs
     OptionalRevenueDecimal budget;
     OptionalRevenueDecimal daily_budget;
     char delivery_pacing;
+    char spend_mode = 'A';
     Commons::Optional<unsigned long> imps;
     Commons::Optional<unsigned long> daily_imps;
     Commons::Optional<unsigned long> clicks;
@@ -459,6 +461,7 @@ namespace AdServer::CampaignSvcs
       budget == right.budget &&
       daily_budget == right.daily_budget &&
       delivery_pacing == right.delivery_pacing &&
+      spend_mode == right.spend_mode &&
       imps == right.imps &&
       daily_imps == right.daily_imps &&
       clicks == right.clicks && daily_clicks == right.daily_clicks;

@@ -259,6 +259,8 @@ module AdServer
       */
 
       char delivery_pacing;
+      // 'A' = ASAP (default), 'E' = Even
+      char spend_mode;
     };
 
     struct TagDeliveryInfo

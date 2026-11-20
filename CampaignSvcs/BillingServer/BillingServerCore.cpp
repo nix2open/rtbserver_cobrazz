@@ -259,11 +259,15 @@ namespace AdServer::CampaignSvcs
     {
       assert(config_.service_count() > 0); // xsd should check this
 
+      const bool enable_spend_pacing =
+        config_.enable_spend_pacing().present() && *config_.enable_spend_pacing();
+
       BillingContainer_var billing_container = new BillingContainer(
         logger_,
         config_.Storage().dir(),
         Generics::Time(config_.max_stat_delay()),
-        config_.service_count());
+        config_.service_count(),
+        enable_spend_pacing);
 
       billing_container_ = billing_container;
       // initialize billing_processor_ only when will be updated budget config (update_config_)

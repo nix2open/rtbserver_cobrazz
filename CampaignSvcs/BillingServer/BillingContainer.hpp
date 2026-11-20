@@ -152,7 +152,8 @@ namespace AdServer::CampaignSvcs
       Logging::Logger* logger,
       const String::SubString& storage_root,
       const Generics::Time& stat_delay,
-      unsigned long limits_divider)
+      unsigned long limits_divider,
+      bool enable_spend_pacing = false)
       /*throw(Exception)*/;
 
     virtual BidResult
@@ -503,6 +504,7 @@ namespace AdServer::CampaignSvcs
     const std::string storage_root_;
     const Generics::Time stat_delay_;
     const RevenueDecimal limit_coef_;
+    const bool ENABLE_SPEND_PACING_;
     const unsigned long SAVE_PORTION_SIZE_;
     const unsigned long REPLACE_PORTION_SIZE_;
     const unsigned long SAVE_RATES_PORTION_SIZE_;

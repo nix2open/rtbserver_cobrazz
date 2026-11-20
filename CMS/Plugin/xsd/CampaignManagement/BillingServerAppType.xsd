@@ -99,6 +99,14 @@
         </xsd:documentation>
       </xsd:annotation>
     </xsd:attribute>
+    <xsd:attribute name="enable_spend_pacing" type="xsd:boolean" use="optional" default="false">
+      <xsd:annotation>
+        <xsd:documentation>
+          Enable Even spend pacing hard caps in BillingServer (spend_mode='E').
+          Keep false for dark release; enable only for canary/prod after ASAP soak.
+        </xsd:documentation>
+      </xsd:annotation>
+    </xsd:attribute>
   </xsd:complexType>
 
 </xsd:schema>

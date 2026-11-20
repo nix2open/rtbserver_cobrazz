@@ -849,6 +849,8 @@ message ConfigDeliveryLimits {
   uint64 imps = 6 [features.field_presence = EXPLICIT];
   uint64 clicks = 8 [features.field_presence = EXPLICIT];
   uint32 delivery_pacing = 9;
+  // 'A' = ASAP (default), 'E' = Even
+  uint32 spend_mode = 10;
 }
 
 message ConfigTagDelivery {

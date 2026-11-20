@@ -42,7 +42,7 @@
 
 Name:    foros-server%{?__type:-%__type}
 Version: %{version}
-Release: ssv680%{?dist}
+Release: ssv681%{?dist}
 Summary: Advertizing Server
 License: Commercial
 Group:   System Environment/Daemons
@@ -262,6 +262,8 @@ pushd %{__product}
 product_root=`pwd`
 cd %{__osbe_build_dir}
 cmake -DUNIXCOMMONS=$(pwd)/../unixcommons -DCMAKE_BUILD_TYPE=RelWithDebInfo .
+# Prebuild CORBA IDL stubs to avoid parallel include races
+%{__make} -j4 CampaignCommonsIDL BillStatInfoIDL StatInfoIDL CampaignServerIDL VERBOSE=1
 %{__make} %{_smp_mflags} VERBOSE=1
 popd
 %endif

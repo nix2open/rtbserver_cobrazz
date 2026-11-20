@@ -2718,7 +2718,9 @@ namespace AdServer::CampaignSvcs
         QC_CMP_IMP_TOTAL_LIMIT,
         QC_CMP_IMP_DAILY_LIMIT,
         QC_CMP_CLICK_TOTAL_LIMIT,
-        QC_CMP_CLICK_DAILY_LIMIT
+        QC_CMP_CLICK_DAILY_LIMIT,
+
+        QC_SPEND_MODE
       };
 
       Commons::Postgres::Statement_var stmt =
@@ -2778,7 +2780,8 @@ namespace AdServer::CampaignSvcs
             "flightcmp.impressions_total_limit, "
             "flightcmp.impressions_daily_limit, "
             "flightcmp.clicks_total_limit, "
-            "flightcmp.clicks_daily_limit "
+            "flightcmp.clicks_daily_limit, "
+            "COALESCE(ccg.spend_mode, 'A') "
           "FROM "
             "adserver.get_campaign_ctr($1) cmp "
             "join Campaign campaign using(campaign_id) "
@@ -2951,6 +2954,8 @@ namespace AdServer::CampaignSvcs
                 OptionalRevenueDecimal();
               campaign->campaign_delivery_limits.delivery_pacing =
                 rs->get_char(QC_CMP_DELIVERY_PACING);
+              // Campaign-level spend_mode is not configured in DB yet; default ASAP.
+              campaign->campaign_delivery_limits.spend_mode = 'A';
               campaign->seq_set_rotate_imps = rs->get_number<unsigned long>(QC_SEQ_SET_ROTATE_IMPS);
 
               campaign->ccg_delivery_limits.imps =
@@ -3011,6 +3016,11 @@ namespace AdServer::CampaignSvcs
                 OptionalRevenueDecimal(rs->get_decimal<RevenueDecimal>(QC_DAILY_BUDGET)) :
                 OptionalRevenueDecimal();
               campaign->ccg_delivery_limits.delivery_pacing = rs->get_char(QC_DELIVERY_PACING);
+              {
+                const char spend_mode = rs->get_char(QC_SPEND_MODE);
+                campaign->ccg_delivery_limits.spend_mode =
+                  (spend_mode == 'E') ? 'E' : 'A';
+              }
 
               campaign->max_pub_share = rs->get_decimal<RevenueDecimal>(QC_MAX_PUB_SHARE);
 

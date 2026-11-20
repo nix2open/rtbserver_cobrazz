@@ -101,6 +101,15 @@
     <xsd:attribute name="service_index" type="xsd:positiveInteger" use="required"/>
     <xsd:attribute name="service_count" type="xsd:positiveInteger" use="required"/>
     <xsd:attribute name="pid_file" type="xsd:string" use="required"/>
+
+    <xsd:attribute name="enable_spend_pacing" type="xsd:boolean" use="optional">
+      <xsd:annotation>
+        <xsd:documentation>
+          When true, apply intra-day Even paced budget caps for CCG/campaign
+          with spend_mode='E'. Default/absent: false (dark release / ASAP-only).
+        </xsd:documentation>
+      </xsd:annotation>
+    </xsd:attribute>
   </xsd:complexType>
 
   <xsd:complexType name="BillingStorageConfigType">

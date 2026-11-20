@@ -79,6 +79,7 @@ namespace AdServer::CampaignSvcs
     delivery_info.budget = CorbaAlgs::pack_optional_decimal(delivery_limits.budget);
     delivery_info.daily_budget = CorbaAlgs::pack_optional_decimal(delivery_limits.daily_budget);
     delivery_info.delivery_pacing = delivery_limits.delivery_pacing;
+    delivery_info.spend_mode = delivery_limits.spend_mode;
 
     if (delivery_limits.imps.has_value())
     {
@@ -139,6 +140,8 @@ namespace AdServer::CampaignSvcs
     delivery_limits.daily_budget = CorbaAlgs::unpack_optional_decimal<RevenueDecimal>(
       delivery_info.daily_budget);
     delivery_limits.delivery_pacing = delivery_info.delivery_pacing;
+    delivery_limits.spend_mode =
+      (delivery_info.spend_mode == 'E') ? 'E' : 'A';
 
     delivery_limits.imps = delivery_info.imps_defined ?
       Commons::Optional<unsigned long>(delivery_info.imps) :

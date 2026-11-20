@@ -332,6 +332,7 @@ namespace
     Table::Column("budget", Table::Column::TEXT),
     Table::Column("daily_budget", Table::Column::TEXT),
     Table::Column("delivery_pacing", Table::Column::TEXT),
+    Table::Column("spend_mode", Table::Column::TEXT),
     Table::Column("imps", Table::Column::TEXT),
     Table::Column("daily_imps", Table::Column::TEXT),
     Table::Column("clicks", Table::Column::TEXT),
@@ -341,6 +342,7 @@ namespace
     Table::Column("cmp_budget", Table::Column::TEXT),
     Table::Column("cmp_daily_budget", Table::Column::TEXT),
     Table::Column("cmp_delivery_pacing", Table::Column::TEXT),
+    Table::Column("cmp_spend_mode", Table::Column::TEXT),
     Table::Column("cmp_imps", Table::Column::TEXT),
     Table::Column("cmp_daily_imps", Table::Column::TEXT),
     Table::Column("cmp_clicks", Table::Column::TEXT),
@@ -1149,6 +1151,7 @@ namespace
       row.add_field(optional_decimal_value(ccg_limits.budget()));
       row.add_field(optional_decimal_value(ccg_limits.daily_budget()));
       row.add_field(std::string(1, static_cast<char>(ccg_limits.delivery_pacing())));
+      row.add_field(std::string(1, static_cast<char>(ccg_limits.spend_mode())));
       row.add_field(ccg_limits.has_imps() ? std::to_string(ccg_limits.imps()) : std::string());
       row.add_field(std::string());
       row.add_field(ccg_limits.has_clicks() ? std::to_string(ccg_limits.clicks()) : std::string());
@@ -1158,6 +1161,7 @@ namespace
       row.add_field(optional_decimal_value(cmp_limits.budget()));
       row.add_field(optional_decimal_value(cmp_limits.daily_budget()));
       row.add_field(std::string(1, static_cast<char>(cmp_limits.delivery_pacing())));
+      row.add_field(std::string(1, static_cast<char>(cmp_limits.spend_mode())));
       row.add_field(cmp_limits.has_imps() ? std::to_string(cmp_limits.imps()) : std::string());
       row.add_field(std::string());
       row.add_field(cmp_limits.has_clicks() ? std::to_string(cmp_limits.clicks()) : std::string());

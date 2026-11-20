@@ -814,7 +814,8 @@ namespace AdServer::CampaignSvcs
       state->campaigns_lock,
       bid.campaign_id,
       *resolve_result.campaign,
-      now))
+      now,
+      ENABLE_SPEND_PACING_))
     {
 #     ifdef DEBUG_OUTPUT
       std::cerr << "check_available_bid(";
@@ -830,7 +831,8 @@ namespace AdServer::CampaignSvcs
       state->ccgs_lock,
       bid.ccg_id,
       *resolve_result.ccg,
-      now))
+      now,
+      ENABLE_SPEND_PACING_))
     {
 #     ifdef DEBUG_OUTPUT
       std::cerr << "check_available_bid(";
@@ -1020,7 +1022,8 @@ namespace AdServer::CampaignSvcs
         bid.campaign_id,
         *resolve_result.campaign,
         now,
-        forced))
+        forced,
+        ENABLE_SPEND_PACING_))
     {
       if (!forced)
       {
@@ -1070,7 +1073,8 @@ namespace AdServer::CampaignSvcs
         bid.ccg_id,
         *resolve_result.ccg,
         now,
-        forced))
+        forced,
+        ENABLE_SPEND_PACING_))
     {
 #     ifdef DEBUG_OUTPUT
       std::cerr << "  confirm_bid_(ccg): " <<
@@ -1450,11 +1454,12 @@ namespace AdServer::CampaignSvcs
     StateSyncPolicy::Mutex& amounts_lock,
     unsigned long object_id,
     const DeliveryLimitsType& delivery_limits,
-    const Generics::Time& now)
+    const Generics::Time& now,
+    bool enable_spend_pacing)
     noexcept
   {
     DeliveryLimitsChecker<DeliveryLimitsType> delivery_limits_checker(
-      delivery_limits, now, ENABLE_SPEND_PACING_);
+      delivery_limits, now, enable_spend_pacing);
 
     if (!delivery_limits_checker.check_required())
     {
@@ -1943,7 +1948,8 @@ namespace AdServer::CampaignSvcs
     unsigned long object_id,
     const DeliveryLimitsType& delivery_limits,
     const Generics::Time& now,
-    bool forced)
+    bool forced,
+    bool enable_spend_pacing)
     noexcept
   {
     RevenueDecimal remind_confirm_amount = confirm_amount;
@@ -1951,7 +1957,7 @@ namespace AdServer::CampaignSvcs
     ImpRevenueDecimal remind_confirm_clicks = confirm_clicks;
 
     DeliveryLimitsChecker<DeliveryLimitsType> delivery_limits_checker(
-      delivery_limits, now, ENABLE_SPEND_PACING_);
+      delivery_limits, now, enable_spend_pacing);
 
     BillingContainerState::AmountHolder_var new_amount_holder =
       new BillingContainerState::AmountHolder();

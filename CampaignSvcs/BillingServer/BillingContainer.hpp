@@ -250,7 +250,8 @@ namespace AdServer::CampaignSvcs
       StateSyncPolicy::Mutex& amounts_lock,
       unsigned long object_id,
       const DeliveryLimitsType& delivery_limits,
-      const Generics::Time& now)
+      const Generics::Time& now,
+      bool enable_spend_pacing = false)
       noexcept;
 
     template<
@@ -304,7 +305,8 @@ namespace AdServer::CampaignSvcs
       unsigned long object_id,
       const DeliveryLimitsType& delivery_limits,
       const Generics::Time& now,
-      bool forced)
+      bool forced,
+      bool enable_spend_pacing = false)
       noexcept;
 
     template<

@@ -446,11 +446,14 @@ class ClickhouseCsvUploader(object) :
     self.clickhouse_conn = config.clickhouse_conn
     self.create_table_query = create_table_query
     self.adapter_accepts_date = adapter_accepts_date
+    # Adapters emit a header row; CSVWithNames maps by name so new optional
+    # columns (page_keywords, expected_post_actions) and omitted ones
+    # (e.g. click_timestamp on RImpression) stay aligned with the table.
     self.command_line_templ = jinja2.Template(
       adapter_script +
       "{% if adapter_date %} --date {{ adapter_date }}{% endif %} " +
       "{{ process_files|join(' ') }} | clickhouse-client {{clickhouse_conn}} " +
-      '--query="INSERT INTO ' + target_table + ' FORMAT CSV"')
+      '--query="INSERT INTO ' + target_table + ' FORMAT CSVWithNames"')
     self.create_table_command_line_templ = jinja2.Template(
       'clickhouse-client {{clickhouse_conn}} --query="{{create_table_query}}"')
     self.logger = logger

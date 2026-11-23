@@ -175,6 +175,18 @@ class ClickhouseAdapterTest(unittest.TestCase):
     self.assertIn(field, CLICKHOUSE_UPLOADER.R_IMPRESSION_CREATE_TABLE_QUERY)
     self.assertIn(field, CLICKHOUSE_UPLOADER.MIGRATIONS[1].query)
 
+  def test_csv_uploader_inserts_with_names(self):
+    config = CLICKHOUSE_UPLOADER.Config()
+    config.clickhouse_conn = '-h click00'
+    uploader = CLICKHOUSE_UPLOADER.RImpressionUploader(config)
+    command = uploader.command_line_templ.render({
+      'clickhouse_conn': config.clickhouse_conn,
+      'process_files': ['/tmp/a.csv'],
+      'adapter_date': None,
+    })
+    self.assertIn('FORMAT CSVWithNames', command)
+    self.assertNotIn('FORMAT CSV"', command)
+
   def test_rpostclick_adapter(self):
     landing_timestamp = '2026-09-11 12:34:56'
     output = self.run_adapter(

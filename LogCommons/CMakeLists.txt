@@ -35,6 +35,7 @@ add_library(LogCommons SHARED
   ExpressionPerformance.cpp
   FileReceiver.cpp
   GeoLogger.cpp
+  InventorySample.cpp
   KeywordHitStat.cpp
   LogCommons.cpp
   PageLoadsDailyStat.cpp

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <set>
 
 #include <google/protobuf/arena.h>
@@ -18,6 +19,7 @@
 #include <Commons/GrpcAlgs.hpp>
 #include <Commons/Grpc/ResponseHolder.hpp>
 #include <Commons/UserInfoManip.hpp>
+#include <Generics/Hash.hpp>
 #include <Generics/Rand.hpp>
 
 namespace AdServer::Bidding
@@ -750,6 +752,83 @@ namespace AdServer::Bidding
     }
 
     bidding_frontend_logger_->process_geo(std::move(params));
+  }
+
+  void
+  BiddingFrontendCore::process_inventory_sample(const RequestInfo& request_info) noexcept
+  {
+    if (!bidding_frontend_logger_.in() || request_info.test_request)
+    {
+      return;
+    }
+
+    BiddingFrontendLogger::InventorySampleParams params;
+
+    if (!request_info.bid_request_id.empty())
+    {
+      params.request_id.assign(
+        request_info.bid_request_id.data(), request_info.bid_request_id.size());
+    }
+    else
+    {
+      Stream::Error rid_ostr;
+      rid_ostr << request_info.request_id;
+      const String::SubString rid = rid_ostr.str();
+      params.request_id.assign(rid.data(), rid.size());
+    }
+
+    params.ssp_id.assign(request_info.source_id.data(), request_info.source_id.size());
+    if (request_info.is_app)
+    {
+      params.inventory_type.assign("app", 3);
+      params.app_bundle.assign(
+        request_info.application_id.data(), request_info.application_id.size());
+    }
+    else
+    {
+      params.inventory_type.assign("site", 4);
+    }
+
+    params.country.assign(
+      request_info.ssp_geo_country.data(), request_info.ssp_geo_country.size());
+    params.region.assign(
+      request_info.ssp_geo_region.data(), request_info.ssp_geo_region.size());
+    params.device_type.assign(
+      request_info.ssp_devicetype_str.data(), request_info.ssp_devicetype_str.size());
+    params.os.assign(request_info.platform.data(), request_info.platform.size());
+    params.domain.assign(request_info.referer.data(), request_info.referer.size());
+    params.publisher_id.assign(
+      request_info.bid_publisher_id.data(), request_info.bid_publisher_id.size());
+    params.tag_id.assign(
+      request_info.additional_info.tagid.data(),
+      request_info.additional_info.tagid.size());
+    params.user_known = (request_info.user_id || !request_info.idfa.empty() ||
+      !request_info.advertising_id.empty()) ? 1 : 0;
+
+    if (!request_info.ad_slots.empty())
+    {
+      const auto& slot = request_info.ad_slots.front();
+      params.ad_format.assign(slot.format.data(), slot.format.size());
+      if (!slot.sizes.empty())
+      {
+        params.size.assign(slot.sizes.front().data(), slot.sizes.front().size());
+      }
+      params.bidfloor = ::strtod(slot.min_ecpm.str().c_str(), nullptr);
+      params.bidfloor_cur.assign(
+        slot.min_ecpm_currency_code.data(), slot.min_ecpm_currency_code.size());
+    }
+
+    if (request_info.user_id)
+    {
+      Stream::Error uid_ostr;
+      uid_ostr << *request_info.user_id;
+      size_t h = 0;
+      Generics::Murmur64Hash hasher(h);
+      hash_add(hasher, uid_ostr.str());
+      params.uid_hash = h;
+    }
+
+    bidding_frontend_logger_->process_inventory_sample(std::move(params));
   }
 
   unsigned long

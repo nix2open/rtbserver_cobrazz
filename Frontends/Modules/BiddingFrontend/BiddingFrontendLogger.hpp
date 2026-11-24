@@ -13,6 +13,7 @@
 
 #include <CampaignSvcs/CampaignCommons/CampaignTypes.hpp>
 #include <LogCommons/GeoLogger.hpp>
+#include <LogCommons/InventorySample.hpp>
 #include <LogCommons/LogHolder.hpp>
 
 namespace AdServer::Bidding
@@ -47,15 +48,51 @@ namespace AdServer::Bidding
       Generics::MonoString city;
     };
 
+    struct InventorySampleParams
+    {
+      InventorySampleParams();
+
+      InventorySampleParams(const InventorySampleParams&) = delete;
+      InventorySampleParams& operator=(const InventorySampleParams&) = delete;
+      InventorySampleParams(InventorySampleParams&&) = delete;
+      InventorySampleParams& operator=(InventorySampleParams&&) = delete;
+
+      static constexpr std::size_t ARENA_SIZE = 1024;
+
+      Generics::MonoAllocatorFixedArena<ARENA_SIZE> arena;
+      Generics::MonoString request_id;
+      Generics::MonoString ssp_id;
+      Generics::MonoString inventory_type;
+      Generics::MonoString country;
+      Generics::MonoString region;
+      Generics::MonoString device_type;
+      Generics::MonoString os;
+      Generics::MonoString ad_format;
+      Generics::MonoString size;
+      Generics::MonoString publisher_id;
+      Generics::MonoString domain;
+      Generics::MonoString app_bundle;
+      Generics::MonoString tag_id;
+      Generics::MonoString deal_id;
+      Generics::MonoString bidfloor_cur;
+      unsigned long user_known = 0;
+      double bidfloor = 0;
+      unsigned long long uid_hash = 0;
+    };
+
     BiddingFrontendLogger(
       Generics::ActiveObjectCallback* callback,
       Logging::Logger* logger,
       const std::string& log_root,
       const Generics::Time& geo_period,
-      unsigned long geo_shards);
+      unsigned long geo_shards,
+      float inventory_sample_rate = 0.02f);
 
     void
     process_geo(GeoParams&& params) noexcept;
+
+    void
+    process_inventory_sample(InventorySampleParams&& params) noexcept;
 
   protected:
     virtual
@@ -69,12 +106,24 @@ namespace AdServer::Bidding
       GeoSavePolicy>;
     using GeoLogHolder_var = ReferenceCounting::SmartPtr<GeoLogHolder>;
 
+    using InventorySavePolicy = AdServer::LogProcessing::SimpleCsvSavePolicy<
+      AdServer::LogProcessing::InventorySampleTraits>;
+    using InventoryLogHolder = AdServer::LogProcessing::LogHolderSharded<
+      AdServer::LogProcessing::InventorySampleTraits,
+      InventorySavePolicy>;
+    using InventoryLogHolder_var = ReferenceCounting::SmartPtr<InventoryLogHolder>;
+
     Generics::Time
     flush_logs_() noexcept;
+
+    static bool
+    keep_sample_(const std::string_view request_id, float sample_rate) noexcept;
 
   private:
     Logging::Logger_var logger_;
     GeoLogHolder_var geo_logger_;
+    InventoryLogHolder_var inventory_logger_;
+    float inventory_sample_rate_;
     Generics::Planner_var scheduler_;
     Generics::TaskRunner_var task_runner_;
   };

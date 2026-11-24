@@ -195,6 +195,9 @@ namespace AdServer::Bidding
     void
     process_geo(const RequestInfo& request_info) noexcept;
 
+    void
+    process_inventory_sample(const RequestInfo& request_info) noexcept;
+
     Logging::Logger*
     logger() noexcept
     {

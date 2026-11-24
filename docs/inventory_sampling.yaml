@@ -1,0 +1,38 @@
+# Inventory Planning — sampling config (§5.2.1)
+# Единая точка управления rate. Смена не требует DDL;
+# применяется только к новым дням (без backfill=true).
+# Читается ingest-job каждые N минут.
+
+default_sample_rate: 0.02          # 2% — стартовый default v1
+tiers:
+  overview:   { rate: 0.02, dims: [L0] }
+  planning:   { rate: 0.02, dims: [L1] }
+  deep_dive:  { rate: 0.10, dims: [L1], scope: top_slices_only }
+  full_audit: { rate: 1.00, dims: [L0], ttl_days: 3 }
+
+# Стратификация: не меньше N событий на страту, иначе boost rate
+stratify_by: [ssp_id, country, inventory_type]
+min_events_per_stratum_per_hour: 50
+
+# Детерминизм
+hash_key: request_id               # cityHash64(hash_key) % 1_000_000 < rate * 1_000_000
+
+# Kill-switch / safety
+enabled: true
+max_cpu_pct_on_fe_host: 5          # семпл только off-path / log tail
+
+# Wins / imps path — всегда полный (спека §5.7)
+wins_sample_rate: 1.0
+
+# Политика факта bid_request (Phase 0)
+bid_request_policy: post_parse_all_seen
+
+# Пороги качества
+low_confidence_sampled_rows: 100
+control_drift_alert_pct: 3.0
+
+# Бюджеты (§5.6)
+budget:
+  planning_table_alert_gib: 100
+  planning_table_hard_gib: 200
+  rows_per_day_l1_alert: 3000000

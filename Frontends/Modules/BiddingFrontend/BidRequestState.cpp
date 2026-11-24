@@ -105,6 +105,7 @@ namespace AdServer::Bidding
     }
 
     bid_frontend_->process_geo(request_info_);
+    bid_frontend_->process_inventory_sample(request_info_);
 
     // check interrupt
     if (check_interrupt_(Stage::RequestParsing))

@@ -116,6 +116,8 @@ namespace AdServer::CampaignSvcs
       {
         bool active;
         Generics::Time time_offset;
+        // Minutes from week start [min, max) in advertiser TZ. Empty = full day.
+        WeeklyRunIntervalSet weekly_run_intervals;
         std::optional<ImpRevenueDecimal> imps_dec;
         std::optional<ImpRevenueDecimal> daily_imps_dec;
         std::optional<ImpRevenueDecimal> clicks_dec;

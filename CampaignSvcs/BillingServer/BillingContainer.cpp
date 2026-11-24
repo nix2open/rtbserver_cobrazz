@@ -573,9 +573,83 @@ namespace AdServer::CampaignSvcs
       return true;
     }
 
+    // Minutes from Monday 00:00 in the same TZ as `time` (gm fields = advertiser-local).
+    static unsigned long
+    time_to_week_offset_min_(const Generics::Time& time) noexcept
+    {
+      const Generics::ExtendedTime ex_time = time.get_gm_time();
+      return (ex_time.tm_wday + 6) % 7 * 60 * 24 +
+        ex_time.tm_hour * 60 +
+        ex_time.tm_min;
+    }
+
+    // Active open/elapsed seconds for Even pacing within today's schedule windows.
+    // weekly_run_intervals: minutes from week start [min, max) in advertiser TZ.
+    // Empty set = full calendar day (legacy behaviour).
+    static void
+    eval_schedule_open_elapsed_(
+      long& open_sec,
+      long& elapsed_sec,
+      const WeeklyRunIntervalSet& weekly_run_intervals,
+      const Generics::Time& adv_now)
+      noexcept
+    {
+      const long day_sec = Generics::Time::ONE_DAY.tv_sec;
+      const unsigned long week_min = time_to_week_offset_min_(adv_now);
+      const unsigned long day_start_min = week_min - (week_min % (24 * 60));
+      const unsigned long day_end_min = day_start_min + 24 * 60;
+      const unsigned long now_min = week_min;
+
+      if (weekly_run_intervals.empty())
+      {
+        open_sec = day_sec;
+        elapsed_sec = (adv_now - adv_now.get_gm_time().get_date()).tv_sec;
+        if (elapsed_sec < 0)
+        {
+          elapsed_sec = 0;
+        }
+        if (elapsed_sec > open_sec)
+        {
+          elapsed_sec = open_sec;
+        }
+        return;
+      }
+
+      open_sec = 0;
+      elapsed_sec = 0;
+      for (WeeklyRunIntervalSet::const_iterator it = weekly_run_intervals.begin();
+        it != weekly_run_intervals.end(); ++it)
+      {
+        const unsigned long imin = std::max(it->min, day_start_min);
+        const unsigned long imax = std::min(it->max, day_end_min);
+        if (imin >= imax)
+        {
+          continue;
+        }
+
+        open_sec += static_cast<long>((imax - imin) * 60);
+
+        if (now_min >= imax)
+        {
+          elapsed_sec += static_cast<long>((imax - imin) * 60);
+        }
+        else if (now_min > imin)
+        {
+          elapsed_sec += static_cast<long>((now_min - imin) * 60);
+        }
+      }
+
+      if (open_sec <= 0)
+      {
+        // No active window today: do not invent a paced curve.
+        open_sec = 0;
+        elapsed_sec = 0;
+      }
+    }
+
     // Cumulative ideal-spend cap for spend_mode == 'E'. Never exceeds today_budget.
-    // Curve is linear over the advertiser-local calendar day (date_start/end and
-    // weekly schedule already gate activity elsewhere).
+    // Curve is linear over today's advertiser-local *active* schedule windows
+    // (weekly_run_intervals); empty schedule falls back to the full calendar day.
     bool
     eval_paced_cap_(RevenueDecimal& paced_cap, const RevenueDecimal& today_budget) const
       noexcept
@@ -590,17 +664,17 @@ namespace AdServer::CampaignSvcs
         }
 
         const Generics::Time adv_now = now_ + delivery_limits_.time_offset;
-        const Generics::Time open_start = adv_now.get_gm_time().get_date();
-        const long open_sec = Generics::Time::ONE_DAY.tv_sec;
+        long open_sec = 0;
+        long elapsed_sec = 0;
+        eval_schedule_open_elapsed_(
+          open_sec,
+          elapsed_sec,
+          delivery_limits_.weekly_run_intervals,
+          adv_now);
 
-        long elapsed_sec = (adv_now - open_start).tv_sec;
-        if (elapsed_sec < 0)
+        if (open_sec <= 0)
         {
-          elapsed_sec = 0;
-        }
-        if (elapsed_sec > open_sec)
-        {
-          elapsed_sec = open_sec;
+          return false;
         }
 
         const RevenueDecimal progress = RevenueDecimal::div(

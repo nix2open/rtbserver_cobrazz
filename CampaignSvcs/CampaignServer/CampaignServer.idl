@@ -177,6 +177,8 @@ module AdServer
       CORBACommons::TimestampInfo time_offset;
       boolean active;
       CampaignDeliveryLimitsInfo delivery_limits;
+      // Minutes from week start [min, max), advertiser TZ. Empty = full week.
+      WeeklyRunIntervalSeq weekly_run_intervals;
     };
 
     typedef sequence<CampaignDeliveryInfo> CampaignDeliverySeq;
@@ -190,6 +192,8 @@ module AdServer
       CampaignDeliveryLimitsInfo delivery_limits;
       CORBACommons::DecimalInfo imp_amount;
       CORBACommons::DecimalInfo click_amount;
+      // Minutes from week start [min, max), advertiser TZ. Empty = full week.
+      WeeklyRunIntervalSeq weekly_run_intervals;
     };
 
     typedef sequence<CCGDeliveryInfo> CCGDeliverySeq;

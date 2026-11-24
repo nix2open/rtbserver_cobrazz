@@ -451,6 +451,8 @@ namespace AdServer::CampaignSvcs
       res_campaign.active = campaign_info.active;
       res_campaign.time_offset = CorbaAlgs::unpack_time(campaign_info.time_offset);
       unpack_delivery_limits(res_campaign, campaign_info.delivery_limits);
+      convert_interval_sequence(
+        res_campaign.weekly_run_intervals, campaign_info.weekly_run_intervals);
 
       res_config.campaigns.insert(std::make_pair(campaign_info.campaign_id, res_campaign));
     }
@@ -463,6 +465,8 @@ namespace AdServer::CampaignSvcs
       res_ccg.active = ccg_info.active;
       res_ccg.time_offset = CorbaAlgs::unpack_time(ccg_info.time_offset);
       unpack_delivery_limits(res_ccg, ccg_info.delivery_limits);
+      convert_interval_sequence(
+        res_ccg.weekly_run_intervals, ccg_info.weekly_run_intervals);
       res_ccg.campaign_id = ccg_info.campaign_id;
       res_ccg.imp_amount = CorbaAlgs::unpack_decimal<RevenueDecimal>(ccg_info.imp_amount);
       res_ccg.click_amount = CorbaAlgs::unpack_decimal<RevenueDecimal>(ccg_info.click_amount);

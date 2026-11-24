@@ -3742,6 +3742,8 @@ namespace AdServer::CampaignSvcs
         pack_delivery_limits(res_ccg.delivery_limits, cmp_it->second->ccg_delivery_limits);
         res_ccg.imp_amount = CorbaAlgs::pack_decimal(cmp_it->second->imp_revenue);
         res_ccg.click_amount = CorbaAlgs::pack_decimal(cmp_it->second->click_revenue);
+        fill_interval_sequence(
+          res_ccg.weekly_run_intervals, cmp_it->second->weekly_run_intervals);
 
         if (filled_campaign_ids.find(campaign_id) == filled_campaign_ids.end())
         {
@@ -3751,6 +3753,10 @@ namespace AdServer::CampaignSvcs
           res_campaign.time_offset = CorbaAlgs::pack_time(time_offset);
           pack_delivery_limits(res_campaign.delivery_limits,
             cmp_it->second->campaign_delivery_limits);
+          // Flight-level schedule is not stored separately; reuse CCG intervals.
+          fill_interval_sequence(
+            res_campaign.weekly_run_intervals, cmp_it->second->weekly_run_intervals);
+          filled_campaign_ids.insert(campaign_id);
         }
       }
 

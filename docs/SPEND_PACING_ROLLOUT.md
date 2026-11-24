@@ -75,3 +75,12 @@ WHERE ccg_id = 238746;
 
 - Canary **не** «один сервер с новым IDL» — только согласованный CS+CM+Billing.
 - Canary логики — **на CCG/flight**, не на хосте.
+
+## Schedule-aware Even (ветка `feature/spend-pacing-schedule-aware`)
+
+Even paced cap считается по **активным окнам** `weekly_run_intervals` (день/часть суток
+в TZ рекламодателя), а не по полным 24h. Пустой schedule → прежнее поведение (весь день).
+
+Деплой: binary с обновлённым `DeliveryLimitConfig` IDL → согласованный restart
+`be-CampaignServer` + все `fe*-BillingServer` (CM/FCGI/nginx не обязательны).
+Смерживать с другими апдейтами в один RPM-релиз.

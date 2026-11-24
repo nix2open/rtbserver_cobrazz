@@ -1568,6 +1568,15 @@ namespace AdServer::Bidding
       {
         kw_fmt.add_dict_keyword(MatchKeywords::VIEWABILITY, adslot.viewability());
       }
+
+      // TEAM-313: Google AdSlot.is_rewarded (no default when field is absent).
+      if (adslot.has_is_rewarded())
+      {
+        kw_fmt.add_full_rtb_keyword(
+          get_value_from_seq(
+            Request::OpenRtb::VIDEO_REWARDS,
+            adslot.is_rewarded() ? 1UL : 0UL));
+      }
     } // adslot fetch
 
     if (bid_request.has_mobile())
@@ -2378,8 +2387,11 @@ namespace AdServer::Bidding
 
         if (!slot_it->video_reward.empty())
         {
+          // Normalize to 0/1: out-of-range indexes fall back to VIDEO_REWARDS[0].
           kw_fmt.add_full_rtb_keyword(
-            get_value_from_seq(Request::OpenRtb::VIDEO_REWARDS, *slot_it->video_reward));
+            get_value_from_seq(
+              Request::OpenRtb::VIDEO_REWARDS,
+              *slot_it->video_reward ? 1UL : 0UL));
         }
 
         if (slot_it->video_placement.has_value())
@@ -4942,6 +4954,15 @@ namespace AdServer::Bidding
         process_string_(value, context);
       }
 
+      void
+      process_bool(bool value, std::string_view, void* context) const override
+      {
+        if (auto* holder = get_holder_(state_from_context(context)))
+        {
+          set_state_number(*holder, value ? int64_t{1} : int64_t{0});
+        }
+      }
+
     private:
       void
       process_string_(std::string_view value, void* context) const
@@ -5785,14 +5806,32 @@ namespace AdServer::Bidding
       {
         return state.ad_slot ? &state.ad_slot->video_skip : nullptr;
       });
-    add_state_value_number(
-      parser,
-      "imp.video.reward",
-      [](FastOpenRtbState& state)
-        -> AdSlotContext::ULValueStateHolder*
+    // TEAM-313: rewarded inventory. OpenRTB 2.6 uses Imp.rwdd; SSPs also send
+    // common ext aliases. imp.video.reward is non-standard and kept as legacy.
+    // No default when absent - keyword is emitted only if a path is present.
+    {
+      static constexpr std::string_view VIDEO_REWARD_PATHS[] =
       {
-        return state.ad_slot ? &state.ad_slot->video_reward : nullptr;
-      });
+        "imp.rwdd",
+        "imp.ext.reward",
+        "imp.ext.rewarded",
+        "imp.ext.is_rewarded",
+        "imp.ext.is_rewarded_inventory",
+        "imp.video.reward",
+        "imp.video.ext.reward",
+        "imp.video.ext.rewarded",
+        "imp.video.ext.is_rewarded"
+      };
+      auto get_video_reward =
+        [](FastOpenRtbState& state) -> AdSlotContext::ULValueStateHolder*
+        {
+          return state.ad_slot ? &state.ad_slot->video_reward : nullptr;
+        };
+      for (std::string_view path : VIDEO_REWARD_PATHS)
+      {
+        add_state_value_number(parser, path, get_video_reward);
+      }
+    }
     add_optional_long(
       parser,
       "imp.video.placement",

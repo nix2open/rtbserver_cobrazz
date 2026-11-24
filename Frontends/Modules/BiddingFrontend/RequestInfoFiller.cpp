@@ -1882,11 +1882,21 @@ namespace AdServer::Bidding
       if (request_info.additional_info.tagid.empty() && !ad_slot_it->tagid.empty())
       {
         request_info.additional_info.tagid = ad_slot_it->tagid;
+        // Emit both source-specific and source-less forms (same pattern as
+        // placement): rtb{source}ssptagid{value} and rtbssptagid{value}.
+        // Without the latter, ssptagid<> triggers do not match.
         if (!kw_fmt.add_external_dict_keyword_norm_spaces(
             MatchKeywords::SSP_TAG_ID,
             request_info.additional_info.tagid))
         {
           record_invalid_utf8_keyword_field(invalid_utf8_keyword_fields, "imp.tagid");
+        }
+        else
+        {
+          kw_fmt.add_external_dict_keyword_norm_spaces(
+            MatchKeywords::SSP_TAG_ID,
+            request_info.additional_info.tagid,
+            false);
         }
       }
 

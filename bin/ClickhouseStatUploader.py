@@ -583,6 +583,49 @@ class GeoUploader(ClickhouseCsvUploader) :
       adapter_accepts_date = True)
 
 
+INVENTORY_EVENTS_SAMPLE_CREATE_TABLE_QUERY = (
+  "CREATE TABLE IF NOT EXISTS inventory_events_sample ("
+  "event_time DateTime('UTC'), "
+  "event_date Date MATERIALIZED toDate(event_time), "
+  "request_id String, "
+  "sample_rate Float32 DEFAULT 0.02, "
+  "sample_tier LowCardinality(String) DEFAULT 'planning', "
+  "ssp_id LowCardinality(String) DEFAULT '', "
+  "inventory_type LowCardinality(String) DEFAULT 'unknown', "
+  "country FixedString(2) DEFAULT '', "
+  "region LowCardinality(String) DEFAULT '', "
+  "device_type LowCardinality(String) DEFAULT '', "
+  "os LowCardinality(String) DEFAULT '', "
+  "ad_format LowCardinality(String) DEFAULT '', "
+  "size LowCardinality(String) DEFAULT '', "
+  "publisher_id String DEFAULT '', "
+  "domain String DEFAULT '', "
+  "app_bundle String DEFAULT '', "
+  "tag_id String DEFAULT '', "
+  "user_known UInt8 DEFAULT 0, "
+  "deal_id String DEFAULT '', "
+  "bidfloor_cur LowCardinality(String) DEFAULT 'RUB', "
+  "bidfloor Float64 DEFAULT 0, "
+  "uid_hash UInt64 DEFAULT 0"
+  ") ENGINE = MergeTree "
+  "PARTITION BY toYYYYMMDD(event_date) "
+  "ORDER BY (event_date, ssp_id, inventory_type, country, domain, request_id) "
+  "TTL event_date + INTERVAL 14 DAY DELETE "
+  "SETTINGS index_granularity = 8192"
+)
+
+
+class InventorySampleUploader(ClickhouseCsvUploader) :
+  def __init__(self, config, logger = None) :
+    super().__init__(
+      config,
+      'InventorySampleClickhouseAdapter.py',
+      'inventory_events_sample',
+      logger = logger,
+      create_table_query = INVENTORY_EVENTS_SAMPLE_CREATE_TABLE_QUERY)
+
+
+
 class BidCostUploader(ClickhouseCsvUploader) :
   def __init__(self, config, logger = None) :
     super().__init__(
@@ -930,6 +973,7 @@ def main() :
   processors['RClick'] = RClickUploader(config, logger = logger)
   processors['RAction'] = RActionUploader(config, logger = logger)
   processors['Geo'] = GeoUploader(config, logger = logger)
+  processors['InventorySample'] = InventorySampleUploader(config, logger = logger)
   processors['BidCost'] = BidCostUploader(config, logger = logger)
   processors['SiteReferrerStats-2'] = SiteReferrerStatsUploader(config, logger = logger)
   channel_trigger_uploader = ChannelTriggerStatsUploader(config, logger = logger)

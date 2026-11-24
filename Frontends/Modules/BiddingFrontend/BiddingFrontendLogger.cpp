@@ -1,6 +1,10 @@
 #include <algorithm>
+#include <fstream>
 #include <functional>
 #include <utility>
+
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <Commons/DelegateTaskGoal.hpp>
 #include <Generics/Hash.hpp>
@@ -13,6 +17,92 @@ namespace AdServer::Bidding
   {
     const char ASPECT[] = "BiddingFrontendLogger";
     const Generics::Time RESCHEDULE_AFTER_ERROR(10);
+
+    // Kill-switch: touch this file to stop sampling without restart.
+    const char INVENTORY_DISABLE_FILE[] =
+      "/opt/foros/server/var/run/inventory_sample.disable";
+    // Optional rate override (single float, e.g. "0.02" or "0").
+    const char INVENTORY_RATE_FILE[] =
+      "/opt/foros/server/etc/inventory_sample.rate";
+
+    bool
+    file_exists_(const char* path) noexcept
+    {
+      struct stat st;
+      return ::stat(path, &st) == 0;
+    }
+
+    std::string
+    inventory_out_dir_(const std::string& log_root)
+    {
+      std::string out = log_root;
+      const std::string geo_ram = "/Geo.ram";
+      const std::string geo = "/Geo";
+      if (out.size() >= geo_ram.size() &&
+        out.compare(out.size() - geo_ram.size(), geo_ram.size(), geo_ram) == 0)
+      {
+        out.replace(out.size() - geo_ram.size(), geo_ram.size(), "/InventorySample.ram");
+      }
+      else if (out.size() >= geo.size() &&
+        out.compare(out.size() - geo.size(), geo.size(), geo) == 0)
+      {
+        out.replace(out.size() - geo.size(), geo.size(), "/InventorySample");
+      }
+      else
+      {
+        out += "/InventorySample";
+      }
+      return out;
+    }
+
+    void
+    mkdir_p_(const std::string& path) noexcept
+    {
+      if (path.empty() || file_exists_(path.c_str()))
+      {
+        return;
+      }
+
+      std::string cur;
+      cur.reserve(path.size());
+      for (std::size_t i = 0; i < path.size(); ++i)
+      {
+        cur.push_back(path[i]);
+        if (path[i] == '/' || i + 1 == path.size())
+        {
+          if (cur.size() > 1 && !file_exists_(cur.c_str()))
+          {
+            ::mkdir(cur.c_str(), 0755);
+          }
+        }
+      }
+    }
+
+    float
+    read_rate_override_(float fallback) noexcept
+    {
+      std::ifstream in(INVENTORY_RATE_FILE);
+      if (!in)
+      {
+        return fallback;
+      }
+
+      float rate = fallback;
+      in >> rate;
+      if (!in.fail())
+      {
+        if (rate < 0.0f)
+        {
+          rate = 0.0f;
+        }
+        if (rate > 1.0f)
+        {
+          rate = 1.0f;
+        }
+        return rate;
+      }
+      return fallback;
+    }
   }
 
   BiddingFrontendLogger::GeoParams::GeoParams()
@@ -51,6 +141,7 @@ namespace AdServer::Bidding
     float inventory_sample_rate)
     : logger_(ReferenceCounting::add_ref(logger)),
       inventory_sample_rate_(inventory_sample_rate),
+      inventory_effective_rate_(inventory_sample_rate),
       scheduler_(new Generics::Planner(callback)),
       task_runner_(new Generics::TaskRunner(callback, 1))
   {
@@ -59,11 +150,14 @@ namespace AdServer::Bidding
       GeoSavePolicy(),
       geo_shards);
 
-    // Inventory sample shares flush period; shards=1 (seq CSV, not keyed agg).
+    const std::string inv_out = inventory_out_dir_(log_root);
+    mkdir_p_(inv_out);
     inventory_logger_ = new InventoryLogHolder(
-      AdServer::LogProcessing::LogFlushTraits(geo_period, log_root.c_str()),
+      AdServer::LogProcessing::LogFlushTraits(geo_period, inv_out.c_str()),
       InventorySavePolicy(),
       1);
+
+    inventory_effective_rate_ = read_rate_override_(inventory_sample_rate_);
 
     add_child_object(scheduler_.in());
     add_child_object(task_runner_.in());
@@ -89,10 +183,16 @@ namespace AdServer::Bidding
       return false;
     }
 
+    // Murmur64Hash commits into `hash` in destructor — must end scope first.
     size_t hash = 0;
-    Generics::Murmur64Hash hasher(hash);
-    hash_add(hasher, String::SubString(request_id.data(), request_id.size()));
-    return (hash % 1000000ULL) < static_cast<unsigned long long>(sample_rate * 1000000.0f);
+    {
+      Generics::Murmur64Hash hasher(hash);
+      hash_add(hasher, String::SubString(request_id.data(), request_id.size()));
+    }
+
+    const auto threshold =
+      static_cast<unsigned long long>(sample_rate * 1000000.0f + 0.5f);
+    return (static_cast<unsigned long long>(hash) % 1000000ULL) < threshold;
   }
 
   void
@@ -135,8 +235,19 @@ namespace AdServer::Bidding
   {
     try
     {
+      if (file_exists_(INVENTORY_DISABLE_FILE))
+      {
+        return;
+      }
+
+      const float rate = inventory_effective_rate_;
+      if (rate <= 0.0f)
+      {
+        return;
+      }
+
       const std::string_view rid(params.request_id.data(), params.request_id.size());
-      if (!keep_sample_(rid, inventory_sample_rate_))
+      if (!keep_sample_(rid, rate))
       {
         return;
       }
@@ -144,7 +255,7 @@ namespace AdServer::Bidding
       AdServer::LogProcessing::InventorySampleData data;
       data.time = Generics::Time::get_time_of_day();
       data.request_id.assign(params.request_id.data(), params.request_id.size());
-      data.sample_rate = inventory_sample_rate_;
+      data.sample_rate = rate;
       data.sample_tier = "planning";
       data.ssp_id.assign(params.ssp_id.data(), params.ssp_id.size());
       data.inventory_type.assign(
@@ -184,6 +295,8 @@ namespace AdServer::Bidding
   {
     try
     {
+      inventory_effective_rate_ = read_rate_override_(inventory_sample_rate_);
+
       const Generics::Time now = Generics::Time::get_time_of_day();
       const Generics::Time geo_next = geo_logger_->flush_if_required(now);
       const Generics::Time inv_next = inventory_logger_->flush_if_required(now);

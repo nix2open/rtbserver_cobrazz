@@ -124,6 +124,7 @@ namespace AdServer::Bidding
     GeoLogHolder_var geo_logger_;
     InventoryLogHolder_var inventory_logger_;
     float inventory_sample_rate_;
+    float inventory_effective_rate_;
     Generics::Planner_var scheduler_;
     Generics::TaskRunner_var task_runner_;
   };

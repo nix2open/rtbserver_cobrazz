@@ -1,13 +1,8 @@
-#!/usr/bin/python3
-"""CSV adapter: InventorySample FE log → inventory_events_sample columns."""
+#!/usr/bin/python3.12
+"""CSV adapter: InventorySample FE log → inventory_events_sample."""
 
 import csv
 import sys
-
-# Header from LogCommons/InventorySample.hpp csv_header()
-# Timestamp,RequestID,SampleRate,SampleTier,SSP,InventoryType,Country,Region,
-# DeviceType,OS,AdFormat,Size,PublisherID,Domain,AppBundle,TagID,UserKnown,
-# DealID,BidfloorCur,Bidfloor,UidHash
 
 OUT_FIELDS = [
   'event_time',
@@ -36,11 +31,11 @@ OUT_FIELDS = [
 
 def normalize_country(value: str) -> str:
   v = (value or '').strip().upper()
+  if v in ('RUS', 'RUSSIA'):
+    return 'RU'
   if len(v) >= 2:
-    if v == 'RUS':
-      return 'RU'
     return v[:2]
-  return '  '
+  return ''
 
 
 def normalize_domain(value: str) -> str:
@@ -67,15 +62,14 @@ def main(argv: list[str]) -> int:
       for row in reader:
         if len(row) < 21:
           continue
-        country = normalize_country(row[6])
         writer.writerow([
-          row[0],  # event_time
+          row[0],
           row[1],
           row[2],
           row[3],
           row[4],
           row[5],
-          country,
+          normalize_country(row[6]),
           row[7],
           row[8],
           row[9],
@@ -85,11 +79,11 @@ def main(argv: list[str]) -> int:
           normalize_domain(row[13]),
           row[14],
           row[15],
-          row[16],
+          row[16] or '0',
           row[17],
           row[18] or 'RUB',
-          row[19],
-          row[20],
+          row[19] or '0',
+          row[20] or '0',
         ])
   return 0
 

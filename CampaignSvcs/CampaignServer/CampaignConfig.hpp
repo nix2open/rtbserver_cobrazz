@@ -328,7 +328,8 @@ namespace AdServer::CampaignSvcs
 
     CampaignDef()
       : eval_status('A'),
-        min_vtr_goal(RevenueDecimal::ZERO)
+        min_vtr_goal(RevenueDecimal::ZERO),
+        hide_referer(false)
     {}
 
     bool operator==(const CampaignDef& right) const noexcept;
@@ -410,6 +411,7 @@ namespace AdServer::CampaignSvcs
     BidStrategy bid_strategy;
     RevenueDecimal min_ctr_goal;
     RevenueDecimal min_vtr_goal;
+    bool hide_referer;
 
     unsigned long initial_contract_id;
 
@@ -2040,6 +2042,7 @@ namespace AdServer::CampaignSvcs
       bid_strategy == right.bid_strategy &&
       min_ctr_goal == right.min_ctr_goal &&
       min_vtr_goal == right.min_vtr_goal &&
+      hide_referer == right.hide_referer &&
       initial_contract_id == right.initial_contract_id &&
       sites.size() == right.sites.size() &&
       creatives.size() == right.creatives.size() &&

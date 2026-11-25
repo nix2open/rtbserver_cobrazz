@@ -958,6 +958,7 @@ namespace AdServer::CampaignSvcs::AdInstances
     RevenueDecimal ecpm_; // for find all ecpm usages
     RevenueDecimal ctr;
     RevenueDecimal min_vtr_goal;
+    bool hide_referer;
 
     bool has_custom_actions;
     bool ctr_modifiable;
@@ -1379,6 +1380,7 @@ namespace AdServer::CampaignSvcs::AdInstances
   inline
   Campaign::Campaign() noexcept
     : min_vtr_goal(RevenueDecimal::ZERO),
+      hide_referer(false),
       ctr_modifiable(false),
       base_min_ctr_goal(RevenueDecimal::ZERO),
       available_(1),

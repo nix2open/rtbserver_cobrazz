@@ -254,6 +254,7 @@ namespace AdServer::CampaignSvcs
       std::string url;
       unsigned long campaign_id = 0;
       unsigned long advertiser_id = 0;
+      bool hide_referer = false;
     };
 
     struct TrackCreativeInfo

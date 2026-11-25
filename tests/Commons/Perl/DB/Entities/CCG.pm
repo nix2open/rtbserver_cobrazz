@@ -212,7 +212,8 @@ use constant STRUCT =>
   country_code => DB::Entity::Type::country(),
   channel_target => DB::Entity::Type::enum(['N', 'U', 'T']),
   delivery_pacing =>  DB::Entity::Type::enum(['D', 'F', 'U']),
-  spend_mode => DB::Entity::Type::enum(['A', 'E'], default => 'A'),
+  spend_mode => DB::Entity::Type::enum(['A', 'E', 'R'], default => 'A'),
+  hide_referer => DB::Entity::Type::enum(['f', 't'], default => 'f'),
   daily_budget => DB::Entity::Type::float(nullable => 1),
   optin_status_targeting =>
     DB::Entity::Type::enum(

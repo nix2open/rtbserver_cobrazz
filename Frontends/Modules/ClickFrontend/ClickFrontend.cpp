@@ -79,6 +79,7 @@ namespace
   namespace Response::Header
   {
     const String::SubString LOCATION("Location");
+    const String::SubString REFERRER_POLICY("Referrer-Policy");
   }
 
 }
@@ -725,6 +726,29 @@ namespace AdServer
           String::TextTemplate::ArgsEncoder args_with_encoding(&args_with_default);
           std::string response_content = templ->instantiate(args_with_encoding);
 
+          if (click_result_info.hide_referer())
+          {
+            response.add_header_nocopy(
+              Response::Header::REFERRER_POLICY, String::SubString("origin"));
+            static const char REFERRER_META[] =
+              "<meta name=\"referrer\" content=\"origin\">";
+            const std::string::size_type head_pos =
+              response_content.find("<head");
+            if (head_pos != std::string::npos)
+            {
+              const std::string::size_type insert_pos =
+                response_content.find('>', head_pos);
+              if (insert_pos != std::string::npos)
+              {
+                response_content.insert(insert_pos + 1, REFERRER_META);
+              }
+            }
+            else
+            {
+              response_content.insert(0, REFERRER_META);
+            }
+          }
+
           response.set_content_type_nocopy(FrontendCommons::ContentType::TEXT_HTML);
           response.get_output_stream().write(response_content.data(), response_content.size());
           http_status = 200;
@@ -746,6 +770,11 @@ namespace AdServer
           response.add_header_nocopy_name(
             Response::Header::LOCATION,
             request_info.click_prefix + click_result_info.url());
+          if (click_result_info.hide_referer())
+          {
+            response.add_header_nocopy(
+              Response::Header::REFERRER_POLICY, String::SubString("origin"));
+          }
 
           if (log_level() >= TraceLevel::MIDDLE)
           {

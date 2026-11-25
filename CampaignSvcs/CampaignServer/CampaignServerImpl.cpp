@@ -1087,6 +1087,7 @@ namespace AdServer::CampaignSvcs
       campaign.bid_strategy = campaign_def.bid_strategy;
       campaign.min_ctr_goal = CorbaAlgs::pack_decimal(campaign_def.min_ctr_goal);
       campaign.min_vtr_goal = CorbaAlgs::pack_decimal(campaign_def.min_vtr_goal);
+      campaign.hide_referer = campaign_def.hide_referer;
 
       campaign.country << campaign_def.country;
       campaign.status = campaign_def.status;

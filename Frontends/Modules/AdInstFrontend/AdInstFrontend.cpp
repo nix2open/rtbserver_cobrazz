@@ -68,6 +68,7 @@ namespace Response::Header
 {
   const String::SubString MERGE_FAILED("x-Merge-Failed");
   const String::SubString LOCATION("Location");
+  const String::SubString REFERRER_POLICY("Referrer-Policy");
   const String::SubString DEBUG_INFO("Debug-Info");
 }
 
@@ -677,10 +678,15 @@ namespace AdServer::Instantiate
 
       if (click_url_result.response.found())
       {
+        const auto& click_result = click_url_result.response.click_result_info();
         response->add_header_nocopy_name(
           Response::Header::LOCATION,
-          request_info.click_prefix_url +
-            click_url_result.response.click_result_info().url());
+          request_info.click_prefix_url + click_result.url());
+        if (click_result.hide_referer())
+        {
+          response->add_header_nocopy(
+            Response::Header::REFERRER_POLICY, String::SubString("origin"));
+        }
         co_return 302;
       }
 

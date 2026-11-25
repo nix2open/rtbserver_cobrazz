@@ -2906,6 +2906,7 @@ namespace AdServer::CampaignSvcs
 
         // campaign_group_id is campaign_id in OIX terms
         click_result_info.campaign_id = creative->campaign->campaign_group_id;
+        click_result_info.hide_referer = creative->campaign->hide_referer;
 
         if (creative->campaign->advertiser)
         {

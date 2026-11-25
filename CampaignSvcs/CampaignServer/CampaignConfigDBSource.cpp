@@ -2720,7 +2720,8 @@ namespace AdServer::CampaignSvcs
         QC_CMP_CLICK_TOTAL_LIMIT,
         QC_CMP_CLICK_DAILY_LIMIT,
 
-        QC_SPEND_MODE
+        QC_SPEND_MODE,
+        QC_HIDE_REFERER
       };
 
       Commons::Postgres::Statement_var stmt =
@@ -2781,7 +2782,8 @@ namespace AdServer::CampaignSvcs
             "flightcmp.impressions_daily_limit, "
             "flightcmp.clicks_total_limit, "
             "flightcmp.clicks_daily_limit, "
-            "COALESCE(ccg.spend_mode, 'A') "
+            "COALESCE(ccg.spend_mode, 'A'), "
+            "CASE WHEN COALESCE(ccg.hide_referer, false) THEN 'Y' ELSE 'N' END "
           "FROM "
             "adserver.get_campaign_ctr($1) cmp "
             "join Campaign campaign using(campaign_id) "
@@ -3021,6 +3023,7 @@ namespace AdServer::CampaignSvcs
                 campaign->ccg_delivery_limits.spend_mode =
                   (spend_mode == 'E' || spend_mode == 'R') ? spend_mode : 'A';
               }
+              campaign->hide_referer = (rs->get_char(QC_HIDE_REFERER) == 'Y');
 
               campaign->max_pub_share = rs->get_decimal<RevenueDecimal>(QC_MAX_PUB_SHARE);
 

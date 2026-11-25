@@ -978,6 +978,7 @@ namespace AdServer::CampaignSvcs
       pack_revenue_decimal(source.min_ctr_goal(), *target.mutable_min_ctr_goal());
       target.set_timestamp(pack_time(source.timestamp));
       pack_revenue_decimal(source.min_vtr_goal, *target.mutable_min_vtr_goal());
+      target.set_hide_referer(source.hide_referer);
     }
 
     void
@@ -2611,6 +2612,7 @@ namespace AdServer::CampaignSvcs
       target->set_url(result.url);
       target->set_campaign_id(result.campaign_id);
       target->set_advertiser_id(result.advertiser_id);
+      target->set_hide_referer(result.hide_referer);
       result_status = ::grpc::Status::OK;
     }
     catch(const CampaignManagerCore::NotReady& ex)

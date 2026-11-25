@@ -364,6 +364,7 @@ module AdServer
 
       TimestampInfo timestamp;
       CORBACommons::DecimalInfo min_vtr_goal;
+      boolean hide_referer;
     };
 
     /**

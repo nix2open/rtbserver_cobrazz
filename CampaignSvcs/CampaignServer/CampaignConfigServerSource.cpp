@@ -972,6 +972,7 @@ namespace AdServer::CampaignSvcs
         campaign_info.min_ctr_goal);
       campaign->min_vtr_goal = CorbaAlgs::unpack_decimal<RevenueDecimal>(
         campaign_info.min_vtr_goal);
+      campaign->hide_referer = campaign_info.hide_referer;
 
       campaign->timestamp = CorbaAlgs::unpack_time(campaign_info.timestamp);
 

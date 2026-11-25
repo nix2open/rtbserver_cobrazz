@@ -2226,6 +2226,7 @@ namespace AdServer::CampaignSvcs
 
       campaign->min_vtr_goal = CorbaAlgs::unpack_decimal<RevenueDecimal>(
         campaign_info.min_vtr_goal);
+      campaign->hide_referer = campaign_info.hide_referer;
 
       convert_interval_sequence(campaign->weekly_run_intervals, campaign_info.weekly_run_intervals);
 

@@ -3019,7 +3019,7 @@ namespace AdServer::CampaignSvcs
               {
                 const char spend_mode = rs->get_char(QC_SPEND_MODE);
                 campaign->ccg_delivery_limits.spend_mode =
-                  (spend_mode == 'E') ? 'E' : 'A';
+                  (spend_mode == 'E' || spend_mode == 'R') ? spend_mode : 'A';
               }
 
               campaign->max_pub_share = rs->get_decimal<RevenueDecimal>(QC_MAX_PUB_SHARE);

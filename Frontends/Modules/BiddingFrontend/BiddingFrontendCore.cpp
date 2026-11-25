@@ -2545,6 +2545,12 @@ namespace AdServer::Bidding
           add_token(common_info->mutable_tokens(),
             "SSP_DEVICETYPE", request_info.ssp_devicetype_str);
         }
+
+        if (!request_info.additional_info.tagid.empty())
+        {
+          add_token(common_info->mutable_tokens(),
+            "SSP_TAG_ID", request_info.additional_info.tagid);
+        }
       }
 
       if (interrupted)

@@ -141,7 +141,8 @@ namespace AdServer::CampaignSvcs
       delivery_info.daily_budget);
     delivery_limits.delivery_pacing = delivery_info.delivery_pacing;
     delivery_limits.spend_mode =
-      (delivery_info.spend_mode == 'E') ? 'E' : 'A';
+      (delivery_info.spend_mode == 'E' || delivery_info.spend_mode == 'R') ?
+        delivery_info.spend_mode : 'A';
 
     delivery_limits.imps = delivery_info.imps_defined ?
       Commons::Optional<unsigned long>(delivery_info.imps) :

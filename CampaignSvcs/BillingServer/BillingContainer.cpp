@@ -345,7 +345,7 @@ namespace AdServer::CampaignSvcs
             {
               RevenueDecimal day_limit = *delivery_limits_.daily_budget;
               RevenueDecimal paced_cap;
-              if (eval_paced_cap_(paced_cap, day_limit))
+              if (eval_paced_cap_(paced_cap, day_limit, today_amount))
               {
                 day_limit = std::min(day_limit, paced_cap);
               }
@@ -502,7 +502,7 @@ namespace AdServer::CampaignSvcs
                 RevenueDecimal::ZERO;
 
               RevenueDecimal paced_cap;
-              if (eval_paced_cap_(paced_cap, dynamic_daily_budget))
+              if (eval_paced_cap_(paced_cap, dynamic_daily_budget, today_amount))
               {
                 dynamic_daily_budget = std::min(dynamic_daily_budget, paced_cap);
               }
@@ -573,7 +573,7 @@ namespace AdServer::CampaignSvcs
       return true;
     }
 
-    // Minutes from Monday 00:00 in the same TZ as `time` (gm fields = advertiser-local).
+    // Minutes from Monday 00:00 in the TZ of `time.get_gm_time()` fields.
     static unsigned long
     time_to_week_offset_min_(const Generics::Time& time) noexcept
     {
@@ -584,18 +584,18 @@ namespace AdServer::CampaignSvcs
     }
 
     // Active open/elapsed seconds for Even pacing within today's schedule windows.
-    // weekly_run_intervals: minutes from week start [min, max) in advertiser TZ.
-    // Empty set = full calendar day (legacy behaviour).
+    // `schedule_now` must use the same clock as `weekly_run_intervals` (see
+    // eval_paced_cap_). Empty set = full calendar day of `schedule_now`.
     static void
     eval_schedule_open_elapsed_(
       long& open_sec,
       long& elapsed_sec,
       const WeeklyRunIntervalSet& weekly_run_intervals,
-      const Generics::Time& adv_now)
+      const Generics::Time& schedule_now)
       noexcept
     {
       const long day_sec = Generics::Time::ONE_DAY.tv_sec;
-      const unsigned long week_min = time_to_week_offset_min_(adv_now);
+      const unsigned long week_min = time_to_week_offset_min_(schedule_now);
       const unsigned long day_start_min = week_min - (week_min % (24 * 60));
       const unsigned long day_end_min = day_start_min + 24 * 60;
       const unsigned long now_min = week_min;
@@ -603,7 +603,7 @@ namespace AdServer::CampaignSvcs
       if (weekly_run_intervals.empty())
       {
         open_sec = day_sec;
-        elapsed_sec = (adv_now - adv_now.get_gm_time().get_date()).tv_sec;
+        elapsed_sec = (schedule_now - schedule_now.get_gm_time().get_date()).tv_sec;
         if (elapsed_sec < 0)
         {
           elapsed_sec = 0;
@@ -647,36 +647,90 @@ namespace AdServer::CampaignSvcs
       }
     }
 
-    // Cumulative ideal-spend cap for spend_mode == 'E'. Never exceeds today_budget.
-    // Curve is linear over today's advertiser-local *active* schedule windows
-    // (weekly_run_intervals); empty schedule falls back to the full calendar day.
+    // Spend pacing cap for spend_mode 'E' / 'R'. Never exceeds today_budget.
+    // Non-empty weekly_run_intervals are CS-shifted into the same clock CM uses for
+    // check_campaign_time_ (UTC gm on the server); do NOT add time_offset there or
+    // open-of-window looks like N hours already elapsed (MSK +3 → catch-up burst).
+    // Empty schedule: pace over the advertiser-local calendar day (now + offset).
+    // 'E' = cumulative ideal from window start (catch-up). 'R' = remaining budget
+    // over remaining open time (no catch-up for missed hours / late go-live).
     bool
-    eval_paced_cap_(RevenueDecimal& paced_cap, const RevenueDecimal& today_budget) const
+    eval_paced_cap_(
+      RevenueDecimal& paced_cap,
+      const RevenueDecimal& today_budget,
+      const RevenueDecimal& today_amount) const
       noexcept
     {
       try
       {
+        const char mode = delivery_limits_.spend_mode;
         if (!enable_spend_pacing_ ||
-          delivery_limits_.spend_mode != 'E' ||
+          (mode != 'E' && mode != 'R') ||
           today_budget <= RevenueDecimal::ZERO)
         {
           return false;
         }
 
-        const Generics::Time adv_now = now_ + delivery_limits_.time_offset;
+        const Generics::Time schedule_now =
+          delivery_limits_.weekly_run_intervals.empty() ?
+            now_ + delivery_limits_.time_offset :
+            now_;
         long open_sec = 0;
         long elapsed_sec = 0;
         eval_schedule_open_elapsed_(
           open_sec,
           elapsed_sec,
           delivery_limits_.weekly_run_intervals,
-          adv_now);
+          schedule_now);
 
         if (open_sec <= 0)
         {
           return false;
         }
 
+        if (mode == 'R')
+        {
+          long remaining_sec = open_sec - elapsed_sec;
+          if (remaining_sec <= 0)
+          {
+            paced_cap = today_budget;
+            return true;
+          }
+
+          RevenueDecimal spent = today_amount;
+          if (spent < RevenueDecimal::ZERO)
+          {
+            spent = RevenueDecimal::ZERO;
+          }
+          if (spent >= today_budget)
+          {
+            paced_cap = today_budget;
+            return true;
+          }
+
+          // Unlock at most lookahead / remaining of what is still unspent.
+          if (remaining_sec <= SPEND_PACING_LOOKAHEAD.tv_sec)
+          {
+            paced_cap = today_budget;
+            return true;
+          }
+
+          const RevenueDecimal rem_budget = today_budget - spent;
+          const RevenueDecimal slice = RevenueDecimal::mul(
+            rem_budget,
+            RevenueDecimal::div(
+              RevenueDecimal(false, SPEND_PACING_LOOKAHEAD.tv_sec, 0),
+              RevenueDecimal(false, remaining_sec, 0)),
+            Generics::DMR_FLOOR);
+          paced_cap = spent + slice;
+          if (paced_cap > today_budget)
+          {
+            paced_cap = today_budget;
+          }
+          return true;
+        }
+
+        // spend_mode 'E': linear cumulative ideal from window start.
         const RevenueDecimal progress = RevenueDecimal::div(
           RevenueDecimal(false, elapsed_sec, 0),
           RevenueDecimal(false, open_sec, 0));

@@ -332,7 +332,7 @@ namespace AdServer::CampaignSvcs
   typedef Generics::SimpleDecimal<uint64_t, 18, 8> CoordDecimal;
   typedef Generics::SimpleDecimal<uint64_t, 18, 8> AccuracyDecimal;
 
-  // spend_mode: 'A' = ASAP (default), 'E' = Even (intra-day paced spend)
+  // spend_mode: 'A' ASAP, 'E' Even (catch-up), 'R' Remaining Even (no catch-up)
   struct CampaignDeliveryLimits
   {
     bool operator==(const CampaignDeliveryLimits& right) const noexcept;

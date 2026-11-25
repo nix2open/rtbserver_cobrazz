@@ -118,6 +118,7 @@ namespace AdServer::CampaignSvcs::CreativeTokens
   const std::string GEO_REGION("GEO_REGION");
   const std::string SSP_DEVICETYPE("SSP_DEVICETYPE");
   const std::string SSP_VIDEO_PLACEMENT("SSP_VIDEO_PLACEMENT");
+  const std::string SSP_TAG_ID("SSP_TAG_ID");
 
   struct PostActionToken
   {

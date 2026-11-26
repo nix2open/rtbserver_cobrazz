@@ -2,9 +2,9 @@
 
 Инструкция для разработчиков и ИИ-агентов. После прочтения можно выполнить релиз **без дополнительных уточнений**, используя команды ниже.
 
-**Последнее обновление:** 2026-11-24  
-**Платформа:** Cobrazz DSP (`foros-server-central` + config colo `programmatic`)  
-**Сборка:** `dev02`  
+**Последнее обновление:** 2026-11-26
+**Платформа:** Cobrazz DSP (`foros-server-central` + config colo `programmatic`)
+**Сборка:** `dev02`
 **Исходники:** GitLab `http://ubuntu-dev08` (группа `genius-desk`)
 
 ---
@@ -13,14 +13,17 @@
 
 | Роль | Хосты | Назначение |
 |------|-------|------------|
-| Build | `dev02` (`192.168.3.15`) | `RPM/build.sh`, `cfgen buildRpm` |
-| Management / cmgr | `adbe00` | `/opt/foros/manager/bin/cmgr` restart/status |
+| Build | `dev02` (`192.168.3.15`) | `RPM/build.sh`, `cfgen buildRpm`; источник RPM |
+| Hub / cmgr | `adbe00` | `/tmp/REL_*` для fan-out; `/opt/foros/manager/bin/cmgr` |
 | DSP Frontend FE1 | `adfe100–110` (без `adfe102` в части конфигов) | bid / HttpFrontend / FCGI* |
 | DSP Frontend FE2 | `adfe200–211` | то же, второй пул |
 | DSP Backend | `adbe00–06` | CampaignServer, RIM, EM, … |
 
-Colo name в cmgr: **`programmatic`**.  
+Colo name в cmgr: **`programmatic`**.
 На FE1 сервисы: `tr1-*` / `fe1-*`. На FE2: `tr2-*` / `fe2-*`.
+
+**Поток артефактов (внутри кластера):** `dev02` (сборка) → `adbe00` (hub) → `adfe*`/`adbe*`.
+Ноутбук — только SSH-оркестрация (`ssh`/`cmgr`); **байты RPM через ноутбук не гонять**.
 
 ### 0.1. Трафик на FE (важно для рестарта)
 
@@ -44,15 +47,23 @@ Colo name в cmgr: **`programmatic`**.
 
 Ключ: **`~/kk1`** (абсолютный путь: `/Users/n.fedorenko/kk1`).
 
-```bash
-# build
-ssh -i ~/kk1 -o IdentitiesOnly=yes nikolay_fedorenko@dev02
+Ноутбук нужен **только как точка входа** (запуск команд / `cmgr` / ForwardAgent).
+Между `dev02`/`adbe00`/`adfe*` своих ключей обычно нет — для **межхостового** `scp`
+внутри кластера: `ssh-add ~/kk1` и `ssh -A ...` (agent). На hop **не** ставить
+`IdentitiesOnly=yes`, иначе agent key не подхватится. Данные RPM при этом идут
+хост→хост, не через Mac.
 
-# canary / install (root на части adfe)
+```bash
+ssh-add ~/kk1   # один раз за сессию (для -A)
+
+# build / publish hub
+ssh -A -i ~/kk1 -o IdentitiesOnly=yes -o ForwardAgent=yes nikolay_fedorenko@dev02
+
+# canary / install (root на части adfe) — точечные проверки с ноутбука OK
 ssh -i ~/kk1 -o IdentitiesOnly=yes root@adfe101
 
-# cmgr
-ssh -i ~/kk1 -o IdentitiesOnly=yes nikolay_fedorenko@adbe00
+# hub / cmgr / fan-out
+ssh -A -i ~/kk1 -o IdentitiesOnly=yes -o ForwardAgent=yes nikolay_fedorenko@adbe00
 ```
 
 `/etc/hosts` на Mac должен резолвить имена кластера (эталон: `gateway:/etc/hosts`, снимок в `docs/hosts.mac.rtb-cluster`). Если имени нет — используй IP из §0 / gateway.
@@ -80,25 +91,26 @@ ssh -i ~/kk1 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 root@adf
 | unixcommons | `http://ubuntu-dev08/genius-desk/unixcommons_cobrazz.git` |
 | configs | `http://ubuntu-dev08/genius-desk/configs_cobrazz.git` |
 
-Web UI: `http://ubuntu-dev08/genius-desk/<name>`  
+Web UI: `http://ubuntu-dev08/genius-desk/<name>`
 Прод-линия кода: ветка **`modern`** (есть на GitLab). Default branch в UI может быть `main` — для релиза checkout **`modern`**.
 
-На `dev02` у `nikolay_fedorenko` clone по HTTP **без ручного логина** (deploy token в `~/.netrc`).  
+На `dev02` у `nikolay_fedorenko` clone по HTTP **без ручного логина** (deploy token в `~/.netrc`).
 Не коммитить токены в git.
 
 ---
 
 ## 2. Артефакты релиза
 
-Нужны **4 RPM** (или только config-тройку, если меняется только конфиг):
+Нужны **5 RPM** для binary+config (или только config-тройку, если меняется только конфиг):
 
-1. `foros-server-central-4.0.0.19-ssvNNN.el8.x86_64.rpm`  
-2. `foros-config-server-programmatic-4.0.0.19-cms*.noarch.rpm`  
-3. `foros-config-server-programmatic-mgr-4.0.0.19-cms*.noarch.rpm`  
-4. `foros-config-server-programmatic-local-mgr-4.0.0.19-cms*.noarch.rpm`  
+1. `foros-server-central-4.0.0.19-ssvNNN.el8.x86_64.rpm`
+2. `foros-telegraf-1.38.1-ssv1.el8.x86_64.rpm` — класть в тот же `REL/` (§5.2.1)
+3. `foros-config-server-programmatic-4.0.0.19-cms*.noarch.rpm`
+4. `foros-config-server-programmatic-mgr-4.0.0.19-cms*.noarch.rpm`
+5. `foros-config-server-programmatic-local-mgr-4.0.0.19-cms*.noarch.rpm`
 
-`Version` пакета сейчас: **`4.0.0.19`**.  
-`Release` бинарника: **`ssvNNN`** в `RPM/SPECS/server.spec` (`Release: ssvNNN%{?dist}`).  
+`Version` пакета сейчас: **`4.0.0.19`**.
+`Release` бинарника: **`ssvNNN`** в `RPM/SPECS/server.spec` (`Release: ssvNNN%{?dist}`).
 Config release: timestamp `cmsYYYYMMDDHHMMSS` от `cfgen`.
 
 Опционально debuginfo/debugsource — для обычного upgrade **не обязательны**.
@@ -117,10 +129,12 @@ Config release: timestamp `cmsYYYYMMDDHHMMSS` от `cfgen`.
 
 ## 4. Сборка на `dev02` (пошагово)
 
-Выполнять **на `dev02`** под `nikolay_fedorenko`.
+Выполнять **на `dev02`** под `nikolay_fedorenko`. Для §4.4 (publish на `adbe00`) —
+сессия с ForwardAgent:
 
 ```bash
-ssh -i ~/kk1 -o IdentitiesOnly=yes nikolay_fedorenko@dev02
+ssh-add ~/kk1
+ssh -A -i ~/kk1 -o IdentitiesOnly=yes -o ForwardAgent=yes nikolay_fedorenko@dev02
 ```
 
 ### 4.1. Чистый workspace
@@ -163,6 +177,10 @@ ls -1 "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-server-central-*.rpm
 mkdir -p "$WORKDIR/REL"
 cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-server-central-${VERSION}-${RELEASE}.el8.x86_64.rpm "$WORKDIR/REL/" || \
 cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-server-central-*.el8.x86_64.rpm "$WORKDIR/REL/"
+# foros-telegraf — обязателен в REL для yum --disablerepo='*' (Requires в server.spec)
+cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-telegraf-*.rpm "$WORKDIR/REL/" 2>/dev/null || \
+  cp -v /root/rpmbuild/RPMS/x86_64/foros-telegraf-*.rpm "$WORKDIR/REL/" 2>/dev/null || \
+  echo "WARN: foros-telegraf RPM not found — найди его или поставка yum на FE упадёт"
 # удали debug* из REL, если скопировались
 rm -f "$WORKDIR/REL"/*debug*.rpm
 ```
@@ -173,6 +191,13 @@ rm -f "$WORKDIR/REL"/*debug*.rpm
 tmux new -s rtbbuild
 # ... build ...
 ```
+
+**telegraf на этапе `build.sh`:** `RPM/build-telegraf.sh` качает upstream RPM с
+`http://192.168.10.1/...`. Зеркало часто **недоступно / зависает на 0%**. Если файл уже
+есть в `$(rpm -E %_sourcedir)/telegraf-1.38.1-1.x86_64.rpm` (типично после прошлых
+сборок) — **не перекачивать**, переиспользовать локальный и проверить sha256. Можно
+патчить workspace-копию `build-telegraf.sh` только на время сборки (reuse-if-exists);
+в git это не коммитить без отдельного решения.
 
 ### 4.3. Config RPM
 
@@ -187,16 +212,36 @@ ls -1 "$WORKDIR/REL"/foros-config-server-programmatic*.rpm
 
 Должны появиться ровно три config RPM (+ бинарь, если собирали).
 
-### 4.4. Каталог для раскатки
+### 4.4. Плоский каталог и публикация на hub (`adbe00`)
+
+`cfgen` кладёт config RPM во вложенный путь (`REL/rpms/.../AdServer-.../`). Собери
+**плоский** каталог на `dev02`, затем **сразу** залей его на `adbe00` по внутренней
+сети (не скачивать на ноутбук).
 
 ```bash
-ls -la "$WORKDIR/REL"
-# ожидаемо:
-# foros-server-central-...ssvNNN....rpm          (если binary release)
-# foros-config-server-programmatic-...cms....rpm
-# foros-config-server-programmatic-mgr-...
-# foros-config-server-programmatic-local-mgr-...
+# на dev02, после §4.2–4.3
+FLAT="$WORKDIR/REL_FLAT"
+mkdir -p "$FLAT"
+cp -v "$WORKDIR/REL"/foros-server-central-${VERSION}-${RELEASE}.el8.x86_64.rpm "$FLAT/"
+cp -v "$WORKDIR/REL"/foros-telegraf-*.rpm "$FLAT/" 2>/dev/null || \
+  cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-telegraf-*.rpm "$FLAT/" 2>/dev/null || \
+  echo "WARN: нет foros-telegraf — возьми из прошлого build-rtb-*/build/RPMS"
+find "$WORKDIR/REL" -name 'foros-config-server-programmatic*.rpm' -exec cp -v {} "$FLAT/" \;
+rm -f "$FLAT"/*debug*.rpm
+ls -lh "$FLAT"
+# ожидаемо 5 RPM: central + telegraf + 3 config
+
+# publish → hub (нужен ForwardAgent с ноутбука: ssh -A ...@dev02)
+ssh -o BatchMode=yes -o StrictHostKeyChecking=no nikolay_fedorenko@adbe00 \
+  "mkdir -p /tmp/REL_${RELEASE}"
+scp -o BatchMode=yes -o StrictHostKeyChecking=no "$FLAT"/*.rpm \
+  nikolay_fedorenko@adbe00:/tmp/REL_${RELEASE}/
+# проверка размера/sha central на hub vs FLAT
+ssh -o BatchMode=yes -o StrictHostKeyChecking=no nikolay_fedorenko@adbe00 \
+  "ls -lh /tmp/REL_${RELEASE}; sha256sum /tmp/REL_${RELEASE}/foros-server-central-*.rpm"
 ```
+
+Дальше (§5) все хосты берут пакеты **только с `adbe00:/tmp/REL_${RELEASE}/`**.
 
 ---
 
@@ -208,34 +253,78 @@ ls -la "$WORKDIR/REL"
 
 Не брать единственный контроллерный хост без нужды для правок, завязанных только на `UserBindController` / `ChannelController` (часто `adfe101`/`adfe100`).
 
-### 5.2. Залить RPM и установить на canary
+### 5.2. Установить на canary (пакеты уже на hub)
 
-С ноутбука (или с `dev02`, если есть ключ на adfe):
+Hub уже заполнен в §4.4 (`adbe00:/tmp/REL_${RELEASE}/`). На canary и ферму копировать
+**только с `adbe00`**. Не `scp` с ноутбука на `adfe`/`adbe` (медленно, truncated RPM).
 
 ```bash
+RELEASE=ssvNNN
 CANARY=adfe103
-RELDIR=...   # путь к REL на машине, откуда scp
-
-scp -i ~/kk1 -o IdentitiesOnly=yes "$RELDIR"/*.rpm root@${CANARY}:/root/REL_${RELEASE}/
-ssh -i ~/kk1 -o IdentitiesOnly=yes root@${CANARY} \
-  "mkdir -p /root/REL_${RELEASE} && cd /root/REL_${RELEASE} && yum install -y --disablerepo='*' --allowerasing ./*.rpm"
+ssh-add ~/kk1
+ssh -A -i ~/kk1 -o IdentitiesOnly=yes -o ForwardAgent=yes nikolay_fedorenko@adbe00 bash -s <<EOF
+set -euo pipefail
+SRC=/tmp/REL_${RELEASE}
+# на hop с adbe00 НЕ ставить IdentitiesOnly=yes — иначе agent key не подхватится
+ssh -o BatchMode=yes -o StrictHostKeyChecking=no root@${CANARY} "mkdir -p /root/REL_${RELEASE}"
+scp -o BatchMode=yes -o StrictHostKeyChecking=no \$SRC/*.rpm root@${CANARY}:/root/REL_${RELEASE}/
+ssh -o BatchMode=yes -o StrictHostKeyChecking=no root@${CANARY} \
+  "cd /root/REL_${RELEASE} && yum install -y --disablerepo='*' --allowerasing ./*.rpm"
+EOF
 ```
 
-Если каталог ещё не создан до scp:
+Установка на сам `adbe00` (user + sudo), если нужен backend — локально с hub-каталога:
 
 ```bash
-ssh -i ~/kk1 -o IdentitiesOnly=yes root@${CANARY} "mkdir -p /root/REL_${RELEASE}"
-scp -i ~/kk1 -o IdentitiesOnly=yes "$RELDIR"/*.rpm root@${CANARY}:/root/REL_${RELEASE}/
-ssh -i ~/kk1 -o IdentitiesOnly=yes root@${CANARY} \
-  "cd /root/REL_${RELEASE} && yum install -y --disablerepo='*' --allowerasing ./*.rpm"
+ssh -i ~/kk1 -o IdentitiesOnly=yes nikolay_fedorenko@adbe00 \
+  "cd /tmp/REL_${RELEASE} && sudo yum install -y --disablerepo='*' --allowerasing ./*.rpm"
 ```
 
 Проверка версии:
 
 ```bash
 ssh -i ~/kk1 -o IdentitiesOnly=yes root@${CANARY} \
-  'rpm -q foros-server-central foros-config-server-programmatic'
+  'rpm -q foros-server-central foros-config-server-programmatic foros-telegraf'
 ```
+
+#### 5.2.1. Зависимости `foros-telegraf` и `python3.12-*` (частый блокер)
+
+`foros-server-central` в `RPM/SPECS/server.spec` требует в том числе:
+
+- `foros-telegraf >= 1.38.1`
+- `python3.12` и пакеты `python3.12-requests`, `python3.12-aiohttp`, …
+
+При установке **`yum install --disablerepo='*'`** yum **не** ходит во внешние репозитории
+и удовлетворяет Requires **только** из RPM, лежащих в текущем каталоге (и уже
+установленных на хосте).
+
+Практика на FE/BE (проверено на ssv686):
+
+| Пакет | Типичное состояние на FE | Что делать |
+|-------|--------------------------|------------|
+| `foros-telegraf` | обычно уже стоит `1.38.1-ssv1` | **всё равно** клади `foros-telegraf-*.rpm` в `REL/` — иначе yum с `--disablerepo='*'` часто падает с `nothing provides foros-telegraf` |
+| `python3.12-requests` | часто **не установлен**, при этом текущий central уже может иметь Unsatisfied dependencies на него | зеркала yum с FE (`ol8_*`, `influxdb`, …) нередко **таймаутятся** — `yum install python3.12-requests` с включёнными repo не опираться |
+
+**Fallback (как уже делают на ферме при битой dep-цепочке python):** не включать
+внешние repo ради одного Requires; поставить бинарь через `rpm` с `--nodeps`, конфиги —
+обычным `rpm -Uvh`:
+
+```bash
+cd /root/REL_${RELEASE}   # на adbe00: /tmp/REL_${RELEASE} + sudo
+rpm -Uvh --nodeps foros-server-central-${VERSION}-${RELEASE}.el8.x86_64.rpm
+rpm -Uvh --force foros-telegraf-1.38.1-ssv1.el8.x86_64.rpm   # no-op, если уже та же версия
+rpm -Uvh foros-config-server-programmatic-*.rpm \
+         foros-config-server-programmatic-mgr-*.rpm \
+         foros-config-server-programmatic-local-mgr-*.rpm
+rpm -q foros-server-central foros-config-server-programmatic foros-telegraf
+```
+
+`--nodeps` здесь **только** из‑за известного пробела `python3.12-requests` на хостах
+(модуль для рантайма DSP не обязателен для bid/CM/Billing). Не использовать `--nodeps`
+«на всякий случай» для других недостающих библиотек — сначала разобрать ошибку.
+
+`yum install` **без** `--disablerepo='*'` на FE не предпочитать: мёртвые mirror’ы
+(`192.168.15.1`, `repos.influxdata.com`) дают долгий hang / fail metadata.
 
 ### 5.3. Что рестартовать (матрица)
 
@@ -282,7 +371,7 @@ H=adfe103
   ${H}:tr1-FCGIRtbServer ${H}:fe1-CampaignManager ${H}:tr1-HttpFrontend
 ```
 
-Ожидание: `running`.  
+Ожидание: `running`.
 Если `cmgr restart` завис/не поднял процесс — fallback **только на зависший сервис** (не на nginx + все FCGI сразу):
 
 ```bash
@@ -322,16 +411,29 @@ ssh -i ~/kk1 -o IdentitiesOnly=yes root@${CANARY} \
 
 Установка RPM может идти пачкой (процессы ещё на старом коде в RAM). **Рестарт — строго по одному хосту** (или ≤2), с wait `running` + короткий smoke между хостами. Не гонять весь FE1/FE2 for-loop рестартов без паузы.
 
+**Копирование пакетов — только с hub `adbe00`** (см. §4.4 / §5.2). Пример для root-FE:
+
 ```bash
+RELEASE=ssvNNN   # тот же, что на hub
+ssh-add ~/kk1
+ssh -A -i ~/kk1 -o IdentitiesOnly=yes -o ForwardAgent=yes nikolay_fedorenko@adbe00 bash -s <<EOF
+set -euo pipefail
+SRC=/tmp/REL_${RELEASE}
+SSH_OPTS="-o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=12"
+# IdentitiesOnly на hop НЕ ставить — иначе ForwardAgent не сработает
 for h in adfe100 adfe101 adfe103 adfe104 adfe105 adfe200 adfe201 adfe202 adfe203 adfe205; do
-  echo "==== $h ===="
-  ssh -i ~/kk1 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 root@$h \
-    "mkdir -p /root/REL_${RELEASE}" || continue
-  scp -i ~/kk1 -o IdentitiesOnly=yes "$RELDIR"/*.rpm root@$h:/root/REL_${RELEASE}/
-  ssh -i ~/kk1 -o IdentitiesOnly=yes root@$h \
+  echo "==== \$h ===="
+  ssh \$SSH_OPTS root@\$h "mkdir -p /root/REL_${RELEASE}" || { echo "ssh_fail \$h"; continue; }
+  scp \$SSH_OPTS \$SRC/*.rpm root@\$h:/root/REL_${RELEASE}/ || { echo "scp_fail \$h"; continue; }
+  ssh \$SSH_OPTS root@\$h \
     "cd /root/REL_${RELEASE} && yum install -y --disablerepo='*' --allowerasing ./*.rpm"
 done
+EOF
 ```
+
+Хосты с `nikolay_fedorenko` + passwordless sudo (`adbe01+`, часть FE вроде `adfe106–110` /
+`adfe206–211`): тот же fan-out с `adbe00`, dest `/tmp/REL_${RELEASE}/`, установка через
+`sudo yum` / `sudo rpm` (§5.2.1).
 
 Рестарт с `adbe00` (пример **bid-only**; для полного набора — см. матрицу §5.3):
 
@@ -354,9 +456,12 @@ done
 
 Хосты **без** SSH-доступа — пропустить или отдать тому, у кого есть ключ / через репозиторий на gateway (Ваня).
 
-**Backend (`adbe*`):** ставить отдельно, если релиз затрагивает backend. На `adbe00` ставить через `nikolay_fedorenko` + `sudo yum install ...`. На `adbe01+` доступ может отсутствовать — проверить перед раскатом.
+**Backend (`adbe*`):** ставить отдельно, если релиз затрагивает backend. На `adbe00` —
+hub + `sudo yum install ...`. На `adbe01+` — копировать **с `adbe00`**, ставить через
+`nikolay_fedorenko` + `sudo` (проверить доступ перед раскатом).
 
-Альтернатива доставки RPM: репозиторий на **gateway00** (уточнять у Вани) вместо `scp` файлов.
+Альтернатива доставки RPM: репозиторий на **gateway00** (уточнять у Вани). Не тащить
+RPM на ноутбук и не раздавать с него.
 
 ### 5.7. Zero-downtime при несовместимых внутренних протоколах
 
@@ -442,16 +547,18 @@ done
 6. [ ] На `dev02`: clone 3 репо с GitLab, `git checkout modern` в rtbserver.
 7. [ ] Для binary: проверь/подними `Release` в `RPM/SPECS/server.spec`, `sudo ./RPM/build.sh ...`.
 8. [ ] `cfgen -o REL/ buildRpm configs_cobrazz/adserver.xml rtbserver_cobrazz/CMS/Plugin/`.
-9. [ ] Собери каталог `REL/` из нужных RPM (без debug*, если не нужны).
-10. [ ] `scp` + `yum install --disablerepo='*' --allowerasing` **только на CANARY** (если canary применим).
-11. [ ] Совместимый релиз: `cmgr restart` **только** выбранных сервисов CANARY; дождись `running`. Не рестартуй nginx/CM/Track/Action без нужды (§0.1, §5.3).
-12. [ ] Несовместимый протокол: после решения человека — порядок §5.7 (lp → FE1 без edge → FE1 edge per-host → PreStart → FE2 → PreStart).
-13. [ ] Смоук: `rpm -q`, `cmgr status`, `curl :10180/status`, error-логи Rtb **и** Track/Action/CM.
-14. [ ] Если OK (совместимый путь) — yum на остальные adfe; restart **по одному хосту** с wait + smoke; иначе STOP и откат canary.
-15. [ ] Итог: список хостов с новой версией `rpm -q foros-server-central foros-config-server-programmatic`.
+9. [ ] На `dev02` собери **плоский** `REL_FLAT/`: central + **foros-telegraf** + 3 config (без debug*). §4.4.
+10. [ ] С `dev02` (ForwardAgent) опубликуй `REL_FLAT/` → hub `adbe00:/tmp/REL_${RELEASE}/`; сверь sha. RPM **не** качать на ноутбук.
+11. [ ] С hub → CANARY + `yum install --disablerepo='*' --allowerasing` (если canary применим). При `nothing provides foros-telegraf` / `python3.12-requests` → §5.2.1 (`rpm -Uvh --nodeps` для central).
+12. [ ] Совместимый релиз: `cmgr restart` **только** выбранных сервисов CANARY; дождись `running`. Не рестартуй nginx/CM/Track/Action без нужды (§0.1, §5.3).
+13. [ ] Несовместимый протокол: после решения человека — порядок §5.7 (lp → FE1 без edge → FE1 edge per-host → PreStart → FE2 → PreStart).
+14. [ ] Смоук: `rpm -q`, `cmgr status`, `curl :10180/status`, error-логи Rtb **и** Track/Action/CM.
+15. [ ] Если OK (совместимый путь) — fan-out RPM **с `adbe00`** + yum на остальные adfe; restart **по одному хосту** с wait + smoke; иначе STOP и откат canary.
+16. [ ] Итог: список хостов с новой версией `rpm -q foros-server-central foros-config-server-programmatic`.
 
 **Запрещено агенту без явного запроса человека:**
 - `yum install` сразу на всю ферму без canary;
+- качать RPM на ноутбук или `scp` с ноутбука на `adfe`/`adbe` (поток: `dev02` → `adbe00` → хосты, §0 / §4.4);
 - рестарт `HttpFrontend` / `CampaignManager` / `FCGITrack*` / `FCGIAction*` «на всякий случай» при bid-only релизе;
 - массовый `cmgr restart` всех FE без паузы между хостами (для edge FCGI/Http — только per-host, см. §5.7);
 - полный порядок §5.7 без подтверждения, что релиз реально ломает внутренние протоколы;
@@ -467,7 +574,11 @@ done
 |---------|------------|
 | `git clone` на dev02 просит логин | Проверить `~/.netrc` и доступность `http://ubuntu-dev08`; не коммитить новый токен в git |
 | `build.sh` падает на deps | `sudo yum install` недостающих `-devel` по тексту ошибки; deps обычно уже на dev02 |
+| `build-telegraf.sh` / curl telegraf висит 0% | Зеркало `192.168.10.1` недоступно; reuse `%_sourcedir/telegraf-1.38.1-1.x86_64.rpm` (§4.2) |
 | Нет `build/RPMS` | Смотри вывод `rpmbuild`; также `rpm -E '%_rpmdir/%_arch'` |
+| yum: `nothing provides foros-telegraf` | Положи `foros-telegraf-*.rpm` в тот же каталог, что central (§5.2.1) |
+| yum: `nothing provides python3.12-requests` | На FE пакет часто отсутствует; внешние repo таймаутятся → `rpm -Uvh --nodeps` для central (§5.2.1) |
+| `yum list` / metadata hang на FE | Мёртвые repo (`influxdb`, `192.168.15.1`); не снимай `--disablerepo='*'` ради deps |
 | `cmgr` → Host key verification / fail | Запускать cmgr с **adbe00**; маски FE1=`tr1/fe1`, FE2=`tr2/fe2` |
 | `Permission denied` root@adfeXXX | Хост не в зоне ключа `kk1` — другой canary или запросить доступ |
 | Config не применился | Убедиться, что установлены **все три** config RPM и сделан restart Http/FCGI |
@@ -478,8 +589,8 @@ done
 
 ## 8. Связанные документы в репо
 
-- `docs/hosts.mac.rtb-cluster` — hosts для Mac  
-- `docs/CLUSTER_ACCESS_MATRIX.md` — матрица доступов (снимок)  
-- `docs/RTB_RELEASE_GUIDE_FOR_JURI.md` — черновик согласования с Jurij  
+- `docs/hosts.mac.rtb-cluster` — hosts для Mac
+- `docs/CLUSTER_ACCESS_MATRIX.md` — матрица доступов (снимок)
+- `docs/RTB_RELEASE_GUIDE_FOR_JURI.md` — черновик согласования с Jurij
 
 Этот файл (`docs/RTB_RELEASE.md`) — **основной runbook** для сборки и выкладки.

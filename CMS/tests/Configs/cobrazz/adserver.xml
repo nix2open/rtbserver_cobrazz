@@ -1322,7 +1322,7 @@ iVDFanoCrMVIpQ59XWHkzdFmoHXHBV7oibVjGSO7ULSQ7MJ1Nz51phuDJSgAIU7A
         </service>
         <service descriptor="AdCluster/FrontendSubCluster/BillingServer" name="BillingServer" host="adfe100 adfe101 adfe103 adfe104 adfe105 adfe106 adfe107 adfe108 adfe109 adfe110">
           <configuration><configuration:billingServer>
-              <configuration:updateParams stat_update_period="3600" config_update_period="30" max_stat_delay="345600"/>
+              <configuration:updateParams stat_update_period="3600" config_update_period="30" max_stat_delay="345600" enable_spend_pacing="true"/>
             </configuration:billingServer></configuration>
         </service>
         <service descriptor="AdCluster/FrontendSubCluster/HttpFrontend" name="HttpFrontend" host="adfe100 adfe101 adfe103 adfe104 adfe105 adfe106 adfe107 adfe108 adfe109 adfe110">
@@ -1466,7 +1466,7 @@ iVDFanoCrMVIpQ59XWHkzdFmoHXHBV7oibVjGSO7ULSQ7MJ1Nz51phuDJSgAIU7A
         </service>
         <service descriptor="AdCluster/FrontendSubCluster/BillingServer" name="BillingServer" host="adfe200 adfe201 adfe202 adfe203 adfe205 adfe206 adfe207 adfe208 adfe209 adfe210 adfe211">
           <configuration><configuration:billingServer>
-              <configuration:updateParams stat_update_period="3600" config_update_period="30" max_stat_delay="345600"/>
+              <configuration:updateParams stat_update_period="3600" config_update_period="30" max_stat_delay="345600" enable_spend_pacing="true"/>
             </configuration:billingServer></configuration>
         </service>
         <service descriptor="AdCluster/FrontendSubCluster/HttpFrontend" name="HttpFrontend" host="adfe200 adfe201 adfe202 adfe203 adfe205 adfe206 adfe207 adfe208 adfe209 adfe210 adfe211">

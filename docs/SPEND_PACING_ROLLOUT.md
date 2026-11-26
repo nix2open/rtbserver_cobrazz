@@ -22,7 +22,8 @@ mixed-IDL canary на один хост.
   - `R` — Remaining Even: остаток бюджета на оставшееся время окна (без catch-up)
 - Код читает `spend_mode`, протаскивает в конфиг/IDL
 - Billing paced cap **только если** `enable_spend_pacing=true` **и** mode `E` или `R`
-- Runtime/CMS default: `enable_spend_pacing=false`
+- Runtime/CMS XSD default: `enable_spend_pacing=false`; colo `programmatic`
+  (`adserver.xml` BillingServer `updateParams`) — **`true`** с `cms20261126080004`
 - SQL для `R`: `docs/sql/2026-11-25_ccg_spend_mode_remaining.sql`
 
 ## Фаза 1 — тёмный релиз (поведение = сегодня)
@@ -33,8 +34,9 @@ mixed-IDL canary на один хост.
 2. все `BillingServer` на `adfe*`
 3. все `CampaignManager` на `adfe*`
 
-Конфиг Billing: `enable_spend_pacing=false` (или атрибут отсутствует).  
-Все CCG остаются `spend_mode='A'`.
+Конфиг Billing (тёмный релиз): `enable_spend_pacing=false`.  
+Сейчас в colo `programmatic` флаг **`true`** (`cms20261126080004`).  
+Все CCG по умолчанию `spend_mode='A'` (Even/Remaining только точечно).
 
 Soak 30–60 мин:
 

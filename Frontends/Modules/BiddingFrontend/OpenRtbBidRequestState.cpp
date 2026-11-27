@@ -749,14 +749,19 @@ namespace AdServer::Bidding
 
             // Bid-price service (docs/BID_PRICE_SPEC.md). Phase 1: log only,
             // never change seatbid.bid.price. Yandex path below is untouched.
+            // Join key must be AdServer RequestId (same as RImpression), not
+            // OpenRTB bidrequest.id.
             try
             {
               if (BidPrice::Controller* bid_price = bid_frontend_->bid_price())
               {
+                Stream::Error rid_ostr;
+                rid_ostr << GrpcAlgs::unpack_request_id(ad_slot_result.request_id);
+                const String::SubString rid = rid_ostr.str();
                 const double original_price =
                   ::strtod(openrtb_price.str().c_str(), nullptr);
                 BidPrice::Input bp_in;
-                bp_in.request_id = request_info.bid_request_id;
+                bp_in.request_id = std::string_view(rid.data(), rid.size());
                 bp_in.source_id = std::string_view(
                   request_info.source_id.data(), request_info.source_id.size());
                 bp_in.deal_id = slot_it->deal_id;
@@ -773,10 +778,9 @@ namespace AdServer::Bidding
                   bid_price->should_write_log(bp_in.source_id, bp_in.request_id))
                 {
                   BiddingFrontendLogger::BidPriceEventParams params;
-                  if (!bp_in.request_id.empty())
+                  if (!rid.empty())
                   {
-                    params.request_id.assign(
-                      bp_in.request_id.data(), bp_in.request_id.size());
+                    params.request_id.assign(rid.data(), rid.size());
                   }
                   params.source_id.assign(
                     request_info.source_id.data(), request_info.source_id.size());

@@ -625,6 +625,45 @@ class InventorySampleUploader(ClickhouseCsvUploader) :
       create_table_query = INVENTORY_EVENTS_SAMPLE_CREATE_TABLE_QUERY)
 
 
+BID_PRICE_EVENTS_CREATE_TABLE_QUERY = (
+  "CREATE TABLE IF NOT EXISTS bid_price_events ("
+  "event_time DateTime('UTC'), "
+  "event_date Date MATERIALIZED toDate(event_time), "
+  "request_id String, "
+  "source_id LowCardinality(String) DEFAULT '', "
+  "tag_id String DEFAULT '', "
+  "size LowCardinality(String) DEFAULT '', "
+  "format LowCardinality(String) DEFAULT '', "
+  "country FixedString(2) DEFAULT '', "
+  "device_type LowCardinality(String) DEFAULT '', "
+  "at Int16 DEFAULT -1, "
+  "bidfloor Float64 DEFAULT 0, "
+  "original_price Float64 DEFAULT 0, "
+  "model_price Float64 DEFAULT 0, "
+  "has_model_price UInt8 DEFAULT 0, "
+  "sent_price Float64 DEFAULT 0, "
+  "mode LowCardinality(String) DEFAULT 'off', "
+  "percent UInt8 DEFAULT 0, "
+  "bucket LowCardinality(String) DEFAULT '', "
+  "reason LowCardinality(String) DEFAULT '', "
+  "won Int8 DEFAULT -1"
+  ") ENGINE = MergeTree "
+  "PARTITION BY toYYYYMMDD(event_date) "
+  "ORDER BY (event_date, source_id, mode, request_id) "
+  "TTL event_date + INTERVAL 15 DAY DELETE "
+  "SETTINGS index_granularity = 8192"
+)
+
+
+class BidPriceEventUploader(ClickhouseCsvUploader) :
+  def __init__(self, config, logger = None) :
+    super().__init__(
+      config,
+      'BidPriceEventClickhouseAdapter.py',
+      'bid_price_events',
+      logger = logger,
+      create_table_query = BID_PRICE_EVENTS_CREATE_TABLE_QUERY)
+
 
 class BidCostUploader(ClickhouseCsvUploader) :
   def __init__(self, config, logger = None) :
@@ -974,6 +1013,7 @@ def main() :
   processors['RAction'] = RActionUploader(config, logger = logger)
   processors['Geo'] = GeoUploader(config, logger = logger)
   processors['InventorySample'] = InventorySampleUploader(config, logger = logger)
+  processors['BidPriceEvent'] = BidPriceEventUploader(config, logger = logger)
   processors['BidCost'] = BidCostUploader(config, logger = logger)
   processors['SiteReferrerStats-2'] = SiteReferrerStatsUploader(config, logger = logger)
   channel_trigger_uploader = ChannelTriggerStatsUploader(config, logger = logger)

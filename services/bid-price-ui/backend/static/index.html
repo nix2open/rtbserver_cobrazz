@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Bid price</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --text: #e7ecf1;
+      --muted: #8b9aab;
+      --accent: #3d9cfd;
+      --line: #2a3542;
+      --ok: #3ecf8e;
+      --warn: #e6b84d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1b2a3a, var(--bg));
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 28px 32px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: end;
+      justify-content: space-between;
+    }
+    h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); margin-top: 4px; font-size: 14px; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    select, input, button {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font: inherit;
+    }
+    button { cursor: pointer; background: var(--accent); border-color: transparent; color: #041018; font-weight: 600; }
+    main { padding: 12px 32px 40px; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: color-mix(in srgb, var(--panel) 92%, white 8%);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .card .value { font-size: 22px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .note { color: var(--warn); font-size: 13px; margin: 8px 0 16px; }
+    .err { color: #ff7b7b; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 13px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      font-variant-numeric: tabular-nums;
+      font-size: 14px;
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+    h2 { font-size: 16px; margin: 0 0 10px; color: var(--muted); font-weight: 600; }
+    .empty { color: var(--muted); padding: 24px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Bid price</h1>
+      <div class="sub">Тонкий BFF → ClickHouse <code>bid_price_events</code></div>
+    </div>
+    <div class="controls">
+      <label>Период
+        <select id="period">
+          <option value="yesterday" selected>Вчера</option>
+          <option value="today">Сегодня</option>
+          <option value="7d">7 дней</option>
+        </select>
+      </label>
+      <label>Source
+        <input id="source" placeholder="все" size="10"/>
+      </label>
+      <label>Mode
+        <select id="mode">
+          <option value="">все</option>
+          <option value="shadow">shadow</option>
+          <option value="margin">margin</option>
+          <option value="optimal">optimal</option>
+          <option value="off">off</option>
+        </select>
+      </label>
+      <button id="reload">Обновить</button>
+      <button id="csv" type="button">Скачать CSV</button>
+    </div>
+  </header>
+  <main>
+    <div id="note" class="note" hidden></div>
+    <div id="error" class="err" hidden></div>
+    <div id="cards" class="cards"></div>
+    <h2>По источникам</h2>
+    <div id="sources"></div>
+    <h2>Ошибки</h2>
+    <div id="errors"></div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n, d=0) => Number(n||0).toLocaleString('ru-RU', {maximumFractionDigits:d});
+    const pct = (n) => (100*Number(n||0)).toFixed(2) + '%';
+
+    function params() {
+      const p = new URLSearchParams();
+      p.set('period', $('period').value);
+      if ($('source').value.trim()) p.set('source_id', $('source').value.trim());
+      if ($('mode').value) p.set('mode', $('mode').value);
+      return p.toString();
+    }
+
+    function card(label, value) {
+      return `<div class="card"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+    }
+
+    async function load() {
+      $('error').hidden = true;
+      $('note').hidden = true;
+      try {
+        const q = params();
+        const [sum, by, err] = await Promise.all([
+          fetch('/api/summary?' + q).then(r => r.json()),
+          fetch('/api/by_source?' + q).then(r => r.json()),
+          fetch('/api/errors?' + q).then(r => r.json()),
+        ]);
+        if (sum.detail) throw new Error(typeof sum.detail === 'string' ? sum.detail : JSON.stringify(sum.detail));
+        if (sum.empty) {
+          $('cards').innerHTML = `<div class="empty">${sum.message || 'нет данных'}</div>`;
+        } else {
+          const c = sum.cards || {};
+          if (c.saved_note) {
+            $('note').hidden = false;
+            $('note').textContent = c.saved_note;
+          }
+          $('cards').innerHTML = [
+            card('Treated', fmt(c.treated_bids)),
+            card('Holdout', fmt(c.holdout_bids)),
+            card('Изменена ставка', fmt(c.treated_changed)),
+            card('Сохранили', c.saved_note ? '—' : fmt(c.saved, 2)),
+            card('Доплата', c.saved_note ? '—' : fmt(c.overspend, 2)),
+            card('WR treated', pct(c.win_rate_treated)),
+            card('WR holdout', pct(c.win_rate_holdout)),
+            card('Ошибки', fmt(c.errors)),
+          ].join('');
+        }
+        if (by.empty || !(by.rows||[]).length) {
+          $('sources').innerHTML = `<div class="empty">${by.message || 'нет данных'}</div>`;
+        } else {
+          $('sources').innerHTML = `<table><thead><tr>
+            <th>source</th><th>mode</th><th>%</th><th>treated</th><th>holdout</th>
+            <th>changed</th><th>saved</th><th>over</th><th>WR t</th><th>WR h</th><th>err</th>
+          </tr></thead><tbody>${by.rows.map(r => `<tr>
+            <td>${r.source_id}</td><td>${r.mode}</td><td>${r.percent}</td>
+            <td>${fmt(r.treated_bids)}</td><td>${fmt(r.holdout_bids)}</td>
+            <td>${fmt(r.treated_changed)}</td><td>${fmt(r.saved,2)}</td><td>${fmt(r.overspend,2)}</td>
+            <td>${pct(r.win_rate_treated)}</td><td>${pct(r.win_rate_holdout)}</td>
+            <td>${fmt(r.errors)}</td>
+          </tr>`).join('')}</tbody></table>`;
+        }
+        if (!(err.rows||[]).length) {
+          $('errors').innerHTML = `<div class="empty">ошибок нет</div>`;
+        } else {
+          $('errors').innerHTML = `<table><thead><tr><th>reason</th><th>count</th></tr></thead>
+            <tbody>${err.rows.map(r => `<tr><td>${r.reason}</td><td>${fmt(r.cnt)}</td></tr>`).join('')}</tbody></table>`;
+        }
+      } catch (e) {
+        $('error').hidden = false;
+        $('error').textContent = String(e.message || e);
+      }
+    }
+
+    $('reload').onclick = load;
+    $('csv').onclick = () => { window.location = '/api/by_source.csv?' + params(); };
+    $('period').onchange = load;
+    load();
+  </script>
+</body>
+</html>

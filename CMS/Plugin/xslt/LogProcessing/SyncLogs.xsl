@@ -1381,6 +1381,16 @@
                   select="$http-frontend-hosts"/></xsl:attribute>
               </cfg:hosts>
             </cfg:Route>
+            <cfg:Route type="RoundRobin">
+              <cfg:files destination="/BidPriceEvent">
+                <xsl:attribute name="source">FCGIRtbServer/Out/BidPriceEvent<xsl:if
+                  test="$campaign-manager-ram-enabled">.ram</xsl:if>/BidPriceEvent_*</xsl:attribute>
+              </cfg:files>
+              <cfg:hosts destination="-non-used-hostname">
+                <xsl:attribute name="source"><xsl:value-of
+                  select="$http-frontend-hosts"/></xsl:attribute>
+              </cfg:hosts>
+            </cfg:Route>
           </xsl:if>
 
           <cfg:Route type="RoundRobin">

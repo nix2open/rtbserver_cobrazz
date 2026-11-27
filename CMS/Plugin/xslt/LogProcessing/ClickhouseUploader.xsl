@@ -57,6 +57,7 @@
     "<xsl:value-of select="concat($workspace-root, '/log/Predictor/ResearchLogs/ResearchAction')"/>",
     "<xsl:value-of select="concat($workspace-root, '/log/Predictor/ResearchLogs/Geo')"/>",
     "<xsl:value-of select="concat($workspace-root, '/log/Predictor/ResearchLogs/InventorySample')"/>",
+    "<xsl:value-of select="concat($workspace-root, '/log/Predictor/ResearchLogs/BidPriceEvent')"/>",
     "<xsl:value-of select="concat($workspace-root, '/log/Predictor/ResearchLogs/BidCostStat')"/>",
     "<xsl:value-of
       select="concat($workspace-root, '/log/Predictor/ResearchLogs/SiteReferrerStats')"/>",

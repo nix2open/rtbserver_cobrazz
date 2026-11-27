@@ -749,14 +749,15 @@ namespace AdServer::Bidding
 
             // Bid-price service (docs/BID_PRICE_SPEC.md). Phase 1: log only,
             // never change seatbid.bid.price. Yandex path below is untouched.
-            // Join key must be AdServer RequestId (same as RImpression), not
-            // OpenRTB bidrequest.id.
+            // Join key = creative RequestId (RImpression / track), not OpenRTB
+            // bidrequest.id and not the slot-level request_id.
             try
             {
               if (BidPrice::Controller* bid_price = bid_frontend_->bid_price())
               {
                 Stream::Error rid_ostr;
-                rid_ostr << GrpcAlgs::unpack_request_id(ad_slot_result.request_id);
+                rid_ostr << GrpcAlgs::unpack_request_id(
+                  ad_slot_result.selected_creatives[0].request_id);
                 const String::SubString rid = rid_ostr.str();
                 const double original_price =
                   ::strtod(openrtb_price.str().c_str(), nullptr);

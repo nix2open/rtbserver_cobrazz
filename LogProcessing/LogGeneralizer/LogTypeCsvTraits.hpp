@@ -936,9 +936,13 @@ namespace AdServer::LogProcessing
       const BaseTraits::CollectorType::DataT::DataT& data)
     {
       write_date_as_csv(os, key.sdate()) << ',';
+      // hits is FixedNumber but PG channeltriggerstats.hits is bigint;
+      // float form like "29161.0" breaks merger COPY.
       os << key.colo_id() << ',' <<
         inner_key.channel_trigger_id() << ',' <<
-        inner_key.type() << ',' << data.hits() << ',' << inner_key.channel_id();
+        inner_key.type() << ',' <<
+        data.hits().integer<unsigned long>() << ',' <<
+        inner_key.channel_id();
 
       return os;
     }

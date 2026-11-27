@@ -74,8 +74,9 @@ ssh -A -i ~/kk1 -o IdentitiesOnly=yes -o ForwardAgent=yes nikolay_fedorenko@adbe
 |------|---------|-------|
 | `dev02` | `nikolay_fedorenko` | **NOPASSWD sudo ALL** + GitLab через `~/.netrc` (group deploy token `dev02-build`) |
 | `adbe00` | `nikolay_fedorenko` | **NOPASSWD sudo ALL**; `cmgr` работает |
-| `adfe101`, `adfe103`, `adfe100`, `adfe104`, `adfe105`, `adfe200`, `adfe201`, `adfe202`, `adfe203`, `adfe205` | `root` via `kk1` | Можно `yum install` |
-| Остальные adfe (напр. `adfe106–110`, `adfe206–211`) | — | Часто **нет** root/`kk1` — не выбирать их для canary без проверки |
+| `adfe100`, `adfe101`, `adfe103`, `adfe104`, `adfe105`, `adfe200`, `adfe201`, `adfe202`, `adfe203`, `adfe205` | `root` via `kk1` | Можно `yum install` |
+| `adfe106–110`, `adfe206–211` | `nikolay_fedorenko` | **NOPASSWD sudo**; root по `kk1` не пускает. Проверка бинарника и логов: `sudo -n` |
+| `adfe102`, `adfe204` | — | SSH timeout / unreachable, в colo их нет — в циклы не включать |
 
 Перед canary **всегда** проверить:
 
@@ -160,6 +161,42 @@ grep '^Release:' RPM/SPECS/server.spec
 
 ### 4.2. Бинарь
 
+#### 4.2.0. Seed telegraf (**обязательно до `build.sh`**)
+
+`RPM/build-telegraf.sh` больше **не должен** зависать на зеркале `192.168.10.1`
+(reuse локального файла + curl с `--max-time 120`). Но если seed отсутствует,
+сборка **упадёт сразу** с явной ошибкой — это лучше, чем висеть часами на 0%.
+
+Перед каждым binary-релизом положи upstream RPM в `%_sourcedir` от **root**
+(именно туда смотрит `sudo ./RPM/build.sh`):
+
+```bash
+TELEGRAF_SRC=telegraf-1.38.1-1.x86_64.rpm
+# под sudo build.sh → обычно /root/rpmbuild/SOURCES
+SOURCEDIR=$(sudo rpm -E '%_sourcedir')
+sudo mkdir -p "$SOURCEDIR"
+# постоянный seed на dev02 (держать копию тут после первого успеха)
+if [[ -f "$HOME/RPM/SOURCES/$TELEGRAF_SRC" ]]; then
+  sudo cp -n "$HOME/RPM/SOURCES/$TELEGRAF_SRC" "$SOURCEDIR/"
+fi
+if [[ ! -f "$SOURCEDIR/$TELEGRAF_SRC" ]]; then
+  echo "FATAL: missing $SOURCEDIR/$TELEGRAF_SRC" >&2
+  echo "Put upstream telegraf RPM there (or in \$HOME/RPM/SOURCES/) before build.sh" >&2
+  exit 1
+fi
+sudo ls -lh "$SOURCEDIR/$TELEGRAF_SRC"
+sudo sha256sum "$SOURCEDIR/$TELEGRAF_SRC"
+# sha должен совпасть с SOURCE_SHA256 в RPM/build-telegraf.sh
+```
+
+Опционально: `export TELEGRAF_SEED_RPM=/path/to/$TELEGRAF_SRC` — `build-telegraf.sh`
+скопирует его в `%_sourcedir`.
+
+**Нельзя:** запускать `build.sh` «в надежде», что curl скачает telegraf — зеркало
+`192.168.10.1` часто недоступно и раньше зависало на `0%` без таймаута.
+
+#### 4.2.1. Сборка
+
 ```bash
 cd "$WORKDIR/rtbserver_cobrazz"
 sudo ./RPM/build.sh "$VERSION" "$(pwd)/../unixcommons_cobrazz/"
@@ -176,7 +213,7 @@ ls -1 "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-server-central-*.rpm
 ```bash
 mkdir -p "$WORKDIR/REL"
 cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-server-central-${VERSION}-${RELEASE}.el8.x86_64.rpm "$WORKDIR/REL/" || \
-cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-server-central-*.el8.x86_64.rpm "$WORKDIR/REL/"
+  cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-server-central-*.el8.x86_64.rpm "$WORKDIR/REL/"
 # foros-telegraf — обязателен в REL для yum --disablerepo='*' (Requires в server.spec)
 cp -v "$WORKDIR/rtbserver_cobrazz/build/RPMS"/foros-telegraf-*.rpm "$WORKDIR/REL/" 2>/dev/null || \
   cp -v /root/rpmbuild/RPMS/x86_64/foros-telegraf-*.rpm "$WORKDIR/REL/" 2>/dev/null || \
@@ -189,15 +226,9 @@ rm -f "$WORKDIR/REL"/*debug*.rpm
 
 ```bash
 tmux new -s rtbbuild
-# ... build ...
+# ... §4.2.0 seed telegraf ...
+# ... build.sh ...
 ```
-
-**telegraf на этапе `build.sh`:** `RPM/build-telegraf.sh` качает upstream RPM с
-`http://192.168.10.1/...`. Зеркало часто **недоступно / зависает на 0%**. Если файл уже
-есть в `$(rpm -E %_sourcedir)/telegraf-1.38.1-1.x86_64.rpm` (типично после прошлых
-сборок) — **не перекачивать**, переиспользовать локальный и проверить sha256. Можно
-патчить workspace-копию `build-telegraf.sh` только на время сборки (reuse-if-exists);
-в git это не коммитить без отдельного решения.
 
 ### 4.3. Config RPM
 
@@ -339,6 +370,7 @@ rpm -q foros-server-central foros-config-server-programmatic foros-telegraf
 | Логика `verify_impression` / CM API | `fe*-CampaignManager` (см. порядок ниже) | не вместе с nginx без нужды |
 | Config-only без смены nginx upstream | только FCGI, которые читают новый FeConfig | nginx, если `nginx.conf` не менялся |
 | Несовместимые изменения внутренних протоколов (LP / gRPC / бинарные логи между BE↔FE) | полный порядок §5.7 (zero-downtime) | обычный canary-only restart из §5.4 |
+| IDL `CampaignInfo` или SQL, который читают CS и CM/Billing (пример: `hide_referer`, `spend_mode`) | порядок §5.8: сначала `be-CampaignServer`, потом все `fe*-BillingServer`, CM и FCGI — только если бинарник в RAM старый | nginx; не стартовать Billing, пока CS не дописал `update_ora_config` |
 
 **Порядок на одном хосте:**
 
@@ -451,7 +483,7 @@ for h in adfe200 adfe201 adfe202 adfe203 adfe205; do
   /opt/foros/manager/bin/cmgr -f programmatic restart $h:tr2-FCGIRtbServer
   /opt/foros/manager/bin/cmgr -f programmatic -x status $h:tr2-FCGIRtbServer
 done
-/opt/foros/manager/bin/cmgr -f programmatic status | grep -E 'stopp|fail|FCGIRtb|FCGITrack|FCGIAction|HttpFrontend' | head -50
+# полный status без -x часто висит (§5.8); лучше -x status по именам сервисов
 ```
 
 Хосты **без** SSH-доступа — пропустить или отдать тому, у кого есть ключ / через репозиторий на gateway (Ваня).
@@ -531,7 +563,66 @@ done
 - Per-host рестарт `*FCGI*` / `*Http*` на шагах 4 и 7 — чтобы не устроить одновременный reconnect storm на стороне SSP.
 - `*:*-PreStart` (`tr*-PreStart` / `fe*-PreStart`) — проверка готовности зависимостей; **не убивать** сессию, пока команда не завершится.
 - Этот путь шире обычного bid-only: он трогает `HttpFrontend`, Track/Action и пр. Ожидай кратковременную потерю edge-трафика **на каждом хосте по очереди**, не на всём пуле сразу.
-- После завершения — смоук как в §5.5 на нескольких FE1 и FE2 + `cmgr status` по ферме.
+- После завершения — смоук как в §5.5 на нескольких FE1 и FE2 + `cmgr -x status` по нужным сервисам. Полный `cmgr status` без `-x` при остановленных Billing/CS часто висит (§5.8).
+
+### 5.8. CS, Billing, CM: чего ждать и какой процесс реально запущен
+
+Проверено 2026-11-26 на выкате ssv686 → ssv687. Пакет на диске и процесс в памяти — разные вещи: `rpm -Uvh` подменяет файл, старый процесс продолжает исполнять прежний inode, пока его не рестартнут.
+
+#### Процесс свежий или нет
+
+Не смотреть `stat /proc/$pid/exe` без `-L`: это inode самой ссылки в proc, он никогда не совпадёт с файлом. Сравнивать inode из карты памяти:
+
+```bash
+bin=/opt/foros/server/bin/FCGIServer   # или CampaignManager / BillingServer
+bino=$(stat -c %i "$bin")
+for pid in $(pgrep -x "$(basename "$bin")"); do
+  mino=$(awk -v b="$bin" '$2=="r-xp" && index($0,b){print $5; exit}' /proc/$pid/maps)
+  cfg=$(tr '\0' ' ' < /proc/$pid/cmdline | awk '{print $NF}')
+  if [ "$mino" = "$bino" ]; then echo CURRENT "$cfg"; else echo STALE "$cfg"; fi
+done
+```
+
+`readlink /proc/$pid/exe` с суффиксом `(deleted)` — процесс точно старый. На `adfe106–110` / `adfe206–211` команда через `sudo -n`.
+
+Рестартовать только STALE-сервисы. Уже CURRENT CampaignManager / Billing / FCGIRtb повторно не трогать.
+
+#### Если менялся IDL или SQL CampaignServer
+
+Новый CM или Billing против старого CS (и наоборот) не «чуть не так логирует», а рвёт разбор `CampaignInfo`. Снаружи это похоже на «Billing висит на CS». Откат только CS при живых CM нового билда оставляет ферму в той же смеси.
+
+Порядок:
+
+1. Поставить пакет на `adbe00` и все FE **без** рестартов. `rpm -Uvh` часто обрывает SSH на полпути — после обрыва ещё раз `rpm -q foros-server-central`, транзакция обычно уже доехала.
+2. Рестарт **только** `adbe00:be-CampaignServer`.
+3. Ждать в `CampaignServer.trace` строку `update_ora_config_(): execution time`. Первый цикл после старта — около 7–11 минут (`query_campaigns` внутри него ~4–6 минут). Пока этой строки нет, Billing не запускать: `get_delivery_limit_config` встанет в очередь и снова будет выглядеть как «CS не готов».
+4. После строки — `cmgr start` всех `fe*-BillingServer` (на хосте, где Billing уже крутился на старом бинарнике, это `restart`).
+5. `fe*-CampaignManager` рестартовать только там, где проверка inode показала STALE.
+6. FCGI — по одному хосту, только STALE и только те, чьего кода касался релиз:
+   - bid / макрос вроде `SSP_TAG_ID` → `tr*-FCGIRtbServer`;
+   - клик / `hide_referer` / AdInst → `tr*-FCGITrackServer` и `tr*-FCGIAdServer`;
+   - `FCGIActionServer` и `FCGIUserBindServer` сами по себе IDL CS не несут. Их рестарт нужен, только если бинарник STALE и надо, чтобы на хосте не осталось старого кода. Рестарт Track бьёт показы на этом хосте, Action — пиксели.
+
+`HttpFrontend` не рестартовать, если nginx-конфиг не менялся.
+
+Имена в cmgr: FE1 `tr1-*` / `fe1-*`, FE2 `tr2-*` / `fe2-*`. CampaignServer: `adbe00:be-CampaignServer`. Стоп UserBind/Action иногда занимает 60–70 секунд — это нормальное ожидание cmgr, не повод для `pkill -9`.
+
+Если новый FCGI пишет `Address already in use`, старый pid ещё держит порт (cmgr уже сказал `stopped`). Дождаться, пока старый процесс исчезнет, и сделать `cmgr start` только этого сервиса. `pkill -9` — не первый шаг.
+
+#### Куда смотреть
+
+| Вопрос | Файл | Что считается ответом |
+|--------|------|------------------------|
+| CS загрузил конфиг? | `/opt/foros/server/var/log/CampaignServer/CampaignServer.trace` | `update_ora_config_(): execution time` **после** `service started` текущего процесса |
+| Это ошибка текущего CS? | `CampaignServer.error` | Только строки новее старта процесса. `get_char: field 'case' has not character type 25` от прошлого билда (ssv686, `CASE` без `CAST`) само не лечится ожиданием |
+| Billing готов? | `BillingServer.trace` | Готовность **не пишется**. После успеха там так и остаётся `service started` |
+| Billing принимает проверки? | `CampaignManager.trace` | Пропали `code=14` / `no active batching streams`. Пока они есть, шард для CM мёртв |
+| `service_index=-1` | тот же trace | Все индексы Billing для этой CCG в бане на 10 секунд (`available=false` или ошибка вызова). Это не то же самое, что «CS не готов» и не то же самое, что `code=14` |
+| CM только что стартовал | `CampaignManager.error` | `Campaign configuration isn't loaded` — нормально десятки секунд, пока CM заберёт конфиг у CS |
+
+Полный `cmgr -f programmatic status` без `-x` при пачке остановленных сервисов или занятом CS зависает на десятки секунд. Для проверки использовать `cmgr -x status` с конкретными именами.
+
+`UserInfoManager … MaxWaitersReached` (gRPC code 8, «already opened 8 transactions») — переполнение UIM, не признак плохого рестарта FCGI. Те же строки бывают на хосте, чей Rtb не трогали.
 
 ---
 
@@ -540,19 +631,19 @@ done
 Скопируй и отмечай:
 
 1. [ ] Определи тип релиза: `binary+config` / `config-only`.
-2. [ ] Есть ли **несовместимые** изменения внутренних протоколов? Если да → путь §5.7; иначе §5.3/§5.4.
-3. [ ] По §5.3 составь список сервисов для restart (default bid-only → только `FCGIRtbServer`).
+2. [ ] Есть ли **несовместимые** изменения внутренних протоколов? Если да → путь §5.7. Смена IDL `CampaignInfo` или SQL CS → §5.8. Иначе §5.3/§5.4.
+3. [ ] По §5.3 составь список сервисов для restart. Не рестартовать то, чей inode уже CURRENT (§5.8). Default bid-only → только `FCGIRtbServer`.
 4. [ ] Выставь `RELEASE=ssvNNN`, `VERSION=4.0.0.19`, `CANARY=adfe103`.
 5. [ ] Проверь SSH: `dev02` (user+sudo), `CANARY` (root), `adbe00` (user+cmgr).
 6. [ ] На `dev02`: clone 3 репо с GitLab, `git checkout modern` в rtbserver.
-7. [ ] Для binary: проверь/подними `Release` в `RPM/SPECS/server.spec`, `sudo ./RPM/build.sh ...`.
+7. [ ] Для binary: проверь/подними `Release` в `RPM/SPECS/server.spec`; **seed telegraf §4.2.0** в `/root/rpmbuild/SOURCES/`; затем `sudo ./RPM/build.sh ...`.
 8. [ ] `cfgen -o REL/ buildRpm configs_cobrazz/adserver.xml rtbserver_cobrazz/CMS/Plugin/`.
 9. [ ] На `dev02` собери **плоский** `REL_FLAT/`: central + **foros-telegraf** + 3 config (без debug*). §4.4.
 10. [ ] С `dev02` (ForwardAgent) опубликуй `REL_FLAT/` → hub `adbe00:/tmp/REL_${RELEASE}/`; сверь sha. RPM **не** качать на ноутбук.
 11. [ ] С hub → CANARY + `yum install --disablerepo='*' --allowerasing` (если canary применим). При `nothing provides foros-telegraf` / `python3.12-requests` → §5.2.1 (`rpm -Uvh --nodeps` для central).
-12. [ ] Совместимый релиз: `cmgr restart` **только** выбранных сервисов CANARY; дождись `running`. Не рестартуй nginx/CM/Track/Action без нужды (§0.1, §5.3).
+12. [ ] Совместимый релиз: `cmgr restart` **только** выбранных сервисов CANARY; дождись `running`. Не рестартуй nginx/CM/Track/Action без нужды (§0.1, §5.3). Если менялся IDL/SQL CS — порядок §5.8, не «restart всего».
 13. [ ] Несовместимый протокол: после решения человека — порядок §5.7 (lp → FE1 без edge → FE1 edge per-host → PreStart → FE2 → PreStart).
-14. [ ] Смоук: `rpm -q`, `cmgr status`, `curl :10180/status`, error-логи Rtb **и** Track/Action/CM.
+14. [ ] Смоук: `rpm -q` **и** inode процесса (§5.8), `cmgr -x status` по рестартованным именам, `curl :10180/status`, error-логи Rtb **и** Track/Action/CM. Для Billing ждать исчезновения `code=14` в `CampaignManager.trace`, не новой строки в `BillingServer.trace`.
 15. [ ] Если OK (совместимый путь) — fan-out RPM **с `adbe00`** + yum на остальные adfe; restart **по одному хосту** с wait + smoke; иначе STOP и откат canary.
 16. [ ] Итог: список хостов с новой версией `rpm -q foros-server-central foros-config-server-programmatic`.
 
@@ -574,13 +665,19 @@ done
 |---------|------------|
 | `git clone` на dev02 просит логин | Проверить `~/.netrc` и доступность `http://ubuntu-dev08`; не коммитить новый токен в git |
 | `build.sh` падает на deps | `sudo yum install` недостающих `-devel` по тексту ошибки; deps обычно уже на dev02 |
-| `build-telegraf.sh` / curl telegraf висит 0% | Зеркало `192.168.10.1` недоступно; reuse `%_sourcedir/telegraf-1.38.1-1.x86_64.rpm` (§4.2) |
+| `build-telegraf.sh` / curl telegraf висит или падает | Зеркало `192.168.10.1` недоступно. **До** `build.sh` сделай seed §4.2.0 в `/root/rpmbuild/SOURCES/telegraf-1.38.1-1.x86_64.rpm`. Скрипт reuse-ит файл и больше не зависает без таймаута |
 | Нет `build/RPMS` | Смотри вывод `rpmbuild`; также `rpm -E '%_rpmdir/%_arch'` |
 | yum: `nothing provides foros-telegraf` | Положи `foros-telegraf-*.rpm` в тот же каталог, что central (§5.2.1) |
 | yum: `nothing provides python3.12-requests` | На FE пакет часто отсутствует; внешние repo таймаутятся → `rpm -Uvh --nodeps` для central (§5.2.1) |
 | `yum list` / metadata hang на FE | Мёртвые repo (`influxdb`, `192.168.15.1`); не снимай `--disablerepo='*'` ради deps |
 | `cmgr` → Host key verification / fail | Запускать cmgr с **adbe00**; маски FE1=`tr1/fe1`, FE2=`tr2/fe2` |
-| `Permission denied` root@adfeXXX | Хост не в зоне ключа `kk1` — другой canary или запросить доступ |
+| Полный `cmgr status` молчит | Не ждать его. `cmgr -x status` на конкретные сервисы (§5.8) |
+| `Permission denied` root@adfe106–110 / 206–211 | Туда ходить `nikolay_fedorenko` + `sudo -n`, не root (§1.2) |
+| SSH оборвался на `rpm -Uvh` | Проверить `rpm -q`: установка часто уже завершилась |
+| Billing «не готов», в trace только `service started` | Это норма после успеха. Смотреть `code=14` в CM. Не рестартовать Billing, пока CS не написал `update_ora_config` (§5.8) |
+| `get_char: field 'case' … type 25` | SQL CS отдал `text` вместо `char(1)` (ssv686). Лечится билдом с `CAST`, не ожиданием и не сменой типа колонки. Строки старого процесса в `.error` не про текущий CS |
+| FCGI: `Address already in use` | Старый процесс ещё слушает порт. Дождаться его ухода и `cmgr start` этого сервиса. Не `pkill -9` первым шагом |
+| `rpm -q` новый, а поведение старое | Процесс STALE (§5.8). Рестартовать только его |
 | Config не применился | Убедиться, что установлены **все три** config RPM и сделан restart Http/FCGI |
 | Ошибки протокола / LP после частичного раската | Вероятно несовместимый внутренний протокол при смешанных версиях — довести порядок §5.7 или откатить |
 | `cmgr start *:*-PreStart` долго не возвращает управление | Не прерывать; смотреть логи PreStart на FE; дождаться завершения или явной ошибки |

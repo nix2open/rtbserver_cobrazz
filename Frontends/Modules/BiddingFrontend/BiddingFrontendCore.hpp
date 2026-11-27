@@ -198,6 +198,13 @@ namespace AdServer::Bidding
     void
     process_inventory_sample(const RequestInfo& request_info) noexcept;
 
+    void
+    process_bid_price_event(
+      BiddingFrontendLogger::BidPriceEventParams&& params) noexcept;
+
+    BidPrice::Controller*
+    bid_price() noexcept;
+
     Logging::Logger*
     logger() noexcept
     {

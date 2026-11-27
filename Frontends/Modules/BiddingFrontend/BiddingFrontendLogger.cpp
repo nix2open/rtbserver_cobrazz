@@ -33,7 +33,10 @@ namespace AdServer::Bidding
     }
 
     std::string
-    inventory_out_dir_(const std::string& log_root)
+    replace_log_leaf_(
+      const std::string& log_root,
+      const char* ram_leaf,
+      const char* leaf)
     {
       std::string out = log_root;
       const std::string geo_ram = "/Geo.ram";
@@ -41,18 +44,30 @@ namespace AdServer::Bidding
       if (out.size() >= geo_ram.size() &&
         out.compare(out.size() - geo_ram.size(), geo_ram.size(), geo_ram) == 0)
       {
-        out.replace(out.size() - geo_ram.size(), geo_ram.size(), "/InventorySample.ram");
+        out.replace(out.size() - geo_ram.size(), geo_ram.size(), ram_leaf);
       }
       else if (out.size() >= geo.size() &&
         out.compare(out.size() - geo.size(), geo.size(), geo) == 0)
       {
-        out.replace(out.size() - geo.size(), geo.size(), "/InventorySample");
+        out.replace(out.size() - geo.size(), geo.size(), leaf);
       }
       else
       {
-        out += "/InventorySample";
+        out += leaf;
       }
       return out;
+    }
+
+    std::string
+    inventory_out_dir_(const std::string& log_root)
+    {
+      return replace_log_leaf_(log_root, "/InventorySample.ram", "/InventorySample");
+    }
+
+    std::string
+    bid_price_out_dir_(const std::string& log_root)
+    {
+      return replace_log_leaf_(log_root, "/BidPriceEvent.ram", "/BidPriceEvent");
     }
 
     void
@@ -132,6 +147,19 @@ namespace AdServer::Bidding
       bidfloor_cur(arena.arena())
   {}
 
+  BiddingFrontendLogger::BidPriceEventParams::BidPriceEventParams()
+    : request_id(arena.arena()),
+      source_id(arena.arena()),
+      tag_id(arena.arena()),
+      size(arena.arena()),
+      format(arena.arena()),
+      country(arena.arena()),
+      device_type(arena.arena()),
+      mode(arena.arena()),
+      bucket(arena.arena()),
+      reason(arena.arena())
+  {}
+
   BiddingFrontendLogger::BiddingFrontendLogger(
     Generics::ActiveObjectCallback* callback,
     Logging::Logger* logger,
@@ -157,7 +185,15 @@ namespace AdServer::Bidding
       InventorySavePolicy(),
       1);
 
+    const std::string bid_out = bid_price_out_dir_(log_root);
+    mkdir_p_(bid_out);
+    bid_price_logger_ = new BidPriceLogHolder(
+      AdServer::LogProcessing::LogFlushTraits(geo_period, bid_out.c_str()),
+      BidPriceSavePolicy(),
+      1);
+
     inventory_effective_rate_ = read_rate_override_(inventory_sample_rate_);
+    bid_price_.reload();
 
     add_child_object(scheduler_.in());
     add_child_object(task_runner_.in());
@@ -290,17 +326,59 @@ namespace AdServer::Bidding
     }
   }
 
+  void
+  BiddingFrontendLogger::process_bid_price_event(BidPriceEventParams&& params) noexcept
+  {
+    try
+    {
+      AdServer::LogProcessing::BidPriceEventData data;
+      data.time = Generics::Time::get_time_of_day();
+      data.request_id.assign(params.request_id.data(), params.request_id.size());
+      data.source_id.assign(params.source_id.data(), params.source_id.size());
+      data.tag_id.assign(params.tag_id.data(), params.tag_id.size());
+      data.size.assign(params.size.data(), params.size.size());
+      data.format.assign(params.format.data(), params.format.size());
+      data.country.assign(params.country.data(), params.country.size());
+      data.device_type.assign(params.device_type.data(), params.device_type.size());
+      data.at = params.at;
+      data.bidfloor = params.bidfloor;
+      data.original_price = params.original_price;
+      data.model_price = params.model_price;
+      data.has_model_price = params.has_model_price;
+      data.sent_price = params.sent_price;
+      data.mode.assign(params.mode.data(), params.mode.size());
+      data.percent = params.percent;
+      data.bucket.assign(params.bucket.data(), params.bucket.size());
+      data.reason.assign(params.reason.data(), params.reason.size());
+      data.won = -1;
+
+      bid_price_logger_->add_record(std::move(data));
+    }
+    catch (const eh::Exception& ex)
+    {
+      if (logger_)
+      {
+        Stream::Error ostr;
+        ostr << "BiddingFrontendLogger::process_bid_price_event(): "
+          "eh::Exception caught: " << ex.what();
+        logger_->log(ostr.str(), Logging::Logger::ERROR, ASPECT);
+      }
+    }
+  }
+
   Generics::Time
   BiddingFrontendLogger::flush_logs_() noexcept
   {
     try
     {
       inventory_effective_rate_ = read_rate_override_(inventory_sample_rate_);
+      bid_price_.reload();
 
       const Generics::Time now = Generics::Time::get_time_of_day();
       const Generics::Time geo_next = geo_logger_->flush_if_required(now);
       const Generics::Time inv_next = inventory_logger_->flush_if_required(now);
-      return std::min(geo_next, inv_next);
+      const Generics::Time bid_next = bid_price_logger_->flush_if_required(now);
+      return std::min(geo_next, std::min(inv_next, bid_next));
     }
     catch (const eh::Exception& ex)
     {

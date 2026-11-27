@@ -12,9 +12,12 @@
 #include <ReferenceCounting/SmartPtr.hpp>
 
 #include <CampaignSvcs/CampaignCommons/CampaignTypes.hpp>
+#include <LogCommons/BidPriceEvent.hpp>
 #include <LogCommons/GeoLogger.hpp>
 #include <LogCommons/InventorySample.hpp>
 #include <LogCommons/LogHolder.hpp>
+
+#include "BidPrice.hpp"
 
 namespace AdServer::Bidding
 {
@@ -80,6 +83,37 @@ namespace AdServer::Bidding
       unsigned long long uid_hash = 0;
     };
 
+    struct BidPriceEventParams
+    {
+      BidPriceEventParams();
+
+      BidPriceEventParams(const BidPriceEventParams&) = delete;
+      BidPriceEventParams& operator=(const BidPriceEventParams&) = delete;
+      BidPriceEventParams(BidPriceEventParams&&) = delete;
+      BidPriceEventParams& operator=(BidPriceEventParams&&) = delete;
+
+      static constexpr std::size_t ARENA_SIZE = 1024;
+
+      Generics::MonoAllocatorFixedArena<ARENA_SIZE> arena;
+      Generics::MonoString request_id;
+      Generics::MonoString source_id;
+      Generics::MonoString tag_id;
+      Generics::MonoString size;
+      Generics::MonoString format;
+      Generics::MonoString country;
+      Generics::MonoString device_type;
+      Generics::MonoString mode;
+      Generics::MonoString bucket;
+      Generics::MonoString reason;
+      long at = -1;
+      double bidfloor = 0;
+      double original_price = 0;
+      double model_price = 0;
+      bool has_model_price = false;
+      double sent_price = 0;
+      unsigned long percent = 0;
+    };
+
     BiddingFrontendLogger(
       Generics::ActiveObjectCallback* callback,
       Logging::Logger* logger,
@@ -93,6 +127,15 @@ namespace AdServer::Bidding
 
     void
     process_inventory_sample(InventorySampleParams&& params) noexcept;
+
+    void
+    process_bid_price_event(BidPriceEventParams&& params) noexcept;
+
+    BidPrice::Controller&
+    bid_price() noexcept
+    {
+      return bid_price_;
+    }
 
   protected:
     virtual
@@ -113,6 +156,13 @@ namespace AdServer::Bidding
       InventorySavePolicy>;
     using InventoryLogHolder_var = ReferenceCounting::SmartPtr<InventoryLogHolder>;
 
+    using BidPriceSavePolicy = AdServer::LogProcessing::SimpleCsvSavePolicy<
+      AdServer::LogProcessing::BidPriceEventTraits>;
+    using BidPriceLogHolder = AdServer::LogProcessing::LogHolderSharded<
+      AdServer::LogProcessing::BidPriceEventTraits,
+      BidPriceSavePolicy>;
+    using BidPriceLogHolder_var = ReferenceCounting::SmartPtr<BidPriceLogHolder>;
+
     Generics::Time
     flush_logs_() noexcept;
 
@@ -123,6 +173,8 @@ namespace AdServer::Bidding
     Logging::Logger_var logger_;
     GeoLogHolder_var geo_logger_;
     InventoryLogHolder_var inventory_logger_;
+    BidPriceLogHolder_var bid_price_logger_;
+    BidPrice::Controller bid_price_;
     float inventory_sample_rate_;
     float inventory_effective_rate_;
     Generics::Planner_var scheduler_;

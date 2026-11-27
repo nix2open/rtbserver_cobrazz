@@ -36,6 +36,7 @@ add_library(LogCommons SHARED
   FileReceiver.cpp
   GeoLogger.cpp
   InventorySample.cpp
+  BidPriceEvent.cpp
   KeywordHitStat.cpp
   LogCommons.cpp
   PageLoadsDailyStat.cpp

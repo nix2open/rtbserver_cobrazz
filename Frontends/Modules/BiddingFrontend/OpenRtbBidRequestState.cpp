@@ -1,10 +1,11 @@
+#include <cstring>
 #include <string_view>
 #include <utility>
 
 #include <zlib.h>
 
-
 #include "OpenRtbBidRequestState.hpp"
+#include "BidPrice.hpp"
 
 #include <Commons/GrpcAlgs.hpp>
 
@@ -745,6 +746,86 @@ namespace AdServer::Bidding
             CampaignSvcs::RevenueDecimal openrtb_price = CampaignSvcs::RevenueDecimal::div(
               sum_pub_ecpm,
               CampaignSvcs::RevenueDecimal(false, 100, 0));
+
+            // Bid-price service (docs/BID_PRICE_SPEC.md). Phase 1: log only,
+            // never change seatbid.bid.price. Yandex path below is untouched.
+            try
+            {
+              if (BidPrice::Controller* bid_price = bid_frontend_->bid_price())
+              {
+                const double original_price =
+                  ::strtod(openrtb_price.str().c_str(), nullptr);
+                BidPrice::Input bp_in;
+                bp_in.request_id = request_info.bid_request_id;
+                bp_in.source_id = std::string_view(
+                  request_info.source_id.data(), request_info.source_id.size());
+                bp_in.deal_id = slot_it->deal_id;
+                bp_in.auction_type = request_info.auction_type;
+                bp_in.bidfloor_cur = slot_it->min_cpm_price_currency_code;
+                bp_in.bid_currency = pub_currency_code;
+                bp_in.bidfloor =
+                  ::strtod(slot_it->min_cpm_price.str().c_str(), nullptr);
+                bp_in.original_price = original_price;
+                bp_in.model_price = std::nullopt;
+
+                const BidPrice::Decision decision = bid_price->evaluate(bp_in);
+                if (decision.should_log &&
+                  bid_price->should_write_log(bp_in.source_id, bp_in.request_id))
+                {
+                  BiddingFrontendLogger::BidPriceEventParams params;
+                  if (!bp_in.request_id.empty())
+                  {
+                    params.request_id.assign(
+                      bp_in.request_id.data(), bp_in.request_id.size());
+                  }
+                  params.source_id.assign(
+                    request_info.source_id.data(), request_info.source_id.size());
+                  params.tag_id.assign(
+                    request_info.additional_info.tagid.data(),
+                    request_info.additional_info.tagid.size());
+                  if (!request_info.ad_slots.empty() &&
+                    !request_info.ad_slots.front().sizes.empty())
+                  {
+                    const auto& sz = request_info.ad_slots.front().sizes.front();
+                    params.size.assign(sz.data(), sz.size());
+                  }
+                  if (!request_info.ad_slots.empty())
+                  {
+                    params.format.assign(
+                      request_info.ad_slots.front().format.data(),
+                      request_info.ad_slots.front().format.size());
+                  }
+                  params.country.assign(
+                    request_info.ssp_geo_country.data(),
+                    request_info.ssp_geo_country.size());
+                  params.device_type.assign(
+                    request_info.ssp_devicetype_str.data(),
+                    request_info.ssp_devicetype_str.size());
+                  params.at = request_info.auction_type.has_value() ?
+                    *request_info.auction_type : -1;
+                  params.bidfloor = bp_in.bidfloor;
+                  params.original_price = decision.original_price;
+                  params.sent_price = decision.sent_price;
+                  if (decision.model_price.has_value())
+                  {
+                    params.has_model_price = true;
+                    params.model_price = *decision.model_price;
+                  }
+                  const char* mode_s = BidPrice::mode_to_string(decision.mode);
+                  params.mode.assign(mode_s, std::strlen(mode_s));
+                  params.percent = static_cast<unsigned long>(decision.percent);
+                  params.bucket.assign(
+                    decision.bucket.data(), decision.bucket.size());
+                  params.reason.assign(
+                    decision.reason.data(), decision.reason.size());
+                  bid_frontend_->process_bid_price_event(std::move(params));
+                }
+              }
+            }
+            catch (...)
+            {
+              // Any bid-price failure must keep the original OpenRTB price.
+            }
 
             std::string escaped_creative_url;
             std::string escaped_creative_body;

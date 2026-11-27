@@ -7,6 +7,7 @@ add_library(BiddingFrontend SHARED
   AdXmlRequestInfoFiller.cpp
   AdfoxRequestInfoFiller.cpp
   BiddingFrontendLogger.cpp
+  BidPrice.cpp
   BiddingFrontend.cpp
   BiddingFrontendStat.cpp
   BidRequestState.cpp

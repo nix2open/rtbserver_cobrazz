@@ -831,6 +831,25 @@ namespace AdServer::Bidding
     bidding_frontend_logger_->process_inventory_sample(std::move(params));
   }
 
+  void
+  BiddingFrontendCore::process_bid_price_event(
+    BiddingFrontendLogger::BidPriceEventParams&& params) noexcept
+  {
+    if (!bidding_frontend_logger_.in())
+    {
+      return;
+    }
+
+    bidding_frontend_logger_->process_bid_price_event(std::move(params));
+  }
+
+  BidPrice::Controller*
+  BiddingFrontendCore::bid_price() noexcept
+  {
+    return bidding_frontend_logger_.in() ?
+      &bidding_frontend_logger_->bid_price() : nullptr;
+  }
+
   unsigned long
   BiddingFrontendCore::reset_reached_max_pending_tasks() noexcept
   {

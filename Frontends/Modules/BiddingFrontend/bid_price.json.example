@@ -1,0 +1,9 @@
+{
+  "default_mode": "off",
+  "default_percent": 0,
+  "max_uplift": 0.15,
+  "max_shade": 0.30,
+  "sources": {
+    "adr": { "mode": "shadow", "percent": 100 }
+  }
+}

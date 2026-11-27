@@ -5641,6 +5641,14 @@ namespace AdServer::Bidding
       {
         state.request_info->bid_request_id = value;
       });
+    add_integer_handler(
+      parser,
+      "at",
+      [](FastOpenRtbState& state, int64_t value)
+      {
+        // Keep unknown separate from 1/2: only set when the field is present.
+        state.request_info->auction_type = static_cast<long>(value);
+      });
     add_string_array(
       parser,
       "cur",

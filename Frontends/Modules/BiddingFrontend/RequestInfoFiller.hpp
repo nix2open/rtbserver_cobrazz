@@ -474,6 +474,8 @@ namespace AdServer::Bidding
     Generics::MonoString require_debug_info;
 
     std::string_view bid_request_id;
+    // OpenRTB BidRequest.at. nullopt = field absent / unknown (not 1 and not 2).
+    std::optional<long> auction_type;
     std::string_view bid_site_id;
     std::string_view bid_publisher_id;
     Generics::MonoVector<Generics::MonoString> ext_user_ids;

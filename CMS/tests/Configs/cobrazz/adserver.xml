@@ -1260,10 +1260,12 @@ iVDFanoCrMVIpQ59XWHkzdFmoHXHBV7oibVjGSO7ULSQ7MJ1Nz51phuDJSgAIU7A
               <configuration:matchParams
                 session_timeout="30"
                 repeat_trigger_timeout="60"
+                rocksdb_batching_threads="4"
                 compaction_threads="32"
                 per_compaction_threads="4"
                 flush_threads="32"
-                max_mem_tables="6"/>
+                max_mem_tables="6"
+                rocksdb_cache_size="4294967296"/>
               <configuration:storage min_free_space="0" max_add_undumped_size="300" max_temp_undumped_size="3072" max_history_undumped_size="2048" max_base_undumped_size="2048" max_freq_cap_undumped_size="3072"/>
             </configuration:userInfoManager></configuration>
         </service>
@@ -1404,10 +1406,12 @@ iVDFanoCrMVIpQ59XWHkzdFmoHXHBV7oibVjGSO7ULSQ7MJ1Nz51phuDJSgAIU7A
               <configuration:matchParams
                 session_timeout="30"
                 repeat_trigger_timeout="60"
+                rocksdb_batching_threads="4"
                 compaction_threads="32"
                 per_compaction_threads="4"
                 flush_threads="32"
-                max_mem_tables="6"/>
+                max_mem_tables="6"
+                rocksdb_cache_size="4294967296"/>
               <configuration:storage min_free_space="0" max_add_undumped_size="300" max_temp_undumped_size="3072" max_history_undumped_size="2048" max_base_undumped_size="2048" max_freq_cap_undumped_size="3072"/>
             </configuration:userInfoManager></configuration>
         </service>
